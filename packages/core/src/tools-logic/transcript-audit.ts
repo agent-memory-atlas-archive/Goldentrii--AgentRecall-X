@@ -140,7 +140,14 @@ function enumerateDays(since: string, until: string): string[] {
   return days;
 }
 
-function resolveDayRange(options: TranscriptAuditOptions): string[] {
+/**
+ * Exported for reuse (evolution p1b) — the day-range resolver is identical
+ * flag semantics (--date XOR --backfill --since/--until) for
+ * `ar corrections harvest-implicit`; TranscriptAuditOptions' date/since/until/
+ * project/claudeDir/dryRun shape is generic enough that implicit-harvest.ts's
+ * own options type is structurally compatible without a cast.
+ */
+export function resolveDayRange(options: TranscriptAuditOptions): string[] {
   if (options.date) return [options.date];
   if (options.since) {
     const until = options.until ?? new Date().toLocaleDateString("sv");
@@ -161,7 +168,12 @@ export function defaultClaudeDir(): string {
 // Transcript scanning (once per run — day-bucketed, project-resolved, cached)
 // ---------------------------------------------------------------------------
 
-interface ScannedTranscript {
+/**
+ * Exported for reuse (evolution p1b, `ar corrections harvest-implicit`) —
+ * this is the SAME day-bucketed/project-resolved scan p1a built; p1b must
+ * not fork a second transcript walker. See implicit-harvest.ts.
+ */
+export interface ScannedTranscript {
   basename: string;
   /** Lines (parsed JSON records), bucketed by their own local-TZ day. */
   byDay: Map<string, unknown[]>;
@@ -186,7 +198,7 @@ function readJsonLine(line: string): unknown | null {
  * usable mtime) — these are NEVER silently assigned to a day (ESCALATION
  * clause in the brief: report the ambiguity, don't guess).
  */
-function scanTranscripts(claudeDir: string): { files: ScannedTranscript[]; ambiguous: string[] } {
+export function scanTranscripts(claudeDir: string): { files: ScannedTranscript[]; ambiguous: string[] } {
   let names: string[];
   try {
     names = fs.readdirSync(claudeDir).filter((f) => f.endsWith(".jsonl")).sort();

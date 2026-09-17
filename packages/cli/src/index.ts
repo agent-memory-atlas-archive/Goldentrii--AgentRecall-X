@@ -951,8 +951,143 @@ async function main(): Promise<void> {
           });
           break;
         }
+        case "harvest-implicit": {
+          // Evolution p1b — high-precision, low-recall implicit correction-
+          // signal miner (negation-opener re-instructions, again-markers +
+          // verb, repeated near-identical instructions). Dry-run by DEFAULT;
+          // --write is the explicit opt-in to actually touch disk. Mirrors
+          // the `ar outcomes audit` flag idiom (--date XOR --backfill
+          // --since/--until, --project, --claude-dir).
+          const hiRest = rest.slice(1);
+          const dateFlag = getFlag("--date", hiRest);
+          const backfill = hasFlag("--backfill", hiRest);
+          const sinceFlag = getFlag("--since", hiRest);
+          const untilFlag = getFlag("--until", hiRest);
+          const projectFlag = getFlag("--project", hiRest);
+          const claudeDirFlag = getFlag("--claude-dir", hiRest);
+          const writeFlag = hasFlag("--write", hiRest);
+          const asJson = hasFlag("--json", hiRest);
+          // Fix round 2: signal (c) repeat-instruction was dropped from the
+          // default after a real-window precision review (see core's
+          // ImplicitHarvestOptions.experimentalSignals doc comment) — this
+          // flag is the explicit, documented opt-in to recover it. Fix
+          // round 3: signal (b) again-marker was ALSO moved behind this same
+          // flag (0 true positives / 2 false positives over a real 48-day
+          // window — see the same doc comment) — DEFAULT is now signal (a)
+          // negation-opener only.
+          const experimentalSignalsFlag = hasFlag("--experimental-signals", hiRest);
+
+          const usage =
+            `Usage: ar corrections harvest-implicit --date YYYY-MM-DD [--project <slug>] [--claude-dir <path>] [--write] [--experimental-signals]\n` +
+            `   or: ar corrections harvest-implicit --backfill --since YYYY-MM-DD [--until YYYY-MM-DD] [--project <slug>] [--claude-dir <path>] [--write] [--experimental-signals]\n` +
+            `Dry-run is the DEFAULT — nothing is written unless --write is passed.\n` +
+            `Default harvest is signal (a) negation-opener ONLY. --experimental-signals opts into signals (b) again-marker and (c) repeat-instruction, both dropped from the default for precision (see reports/2026-09-17-evolution-p1-w1b-implicit-capture.md, Fix round 2 and Fix round 3).\n`;
+
+          const missingArgs: string[] = [];
+          if (!dateFlag && !backfill) missingArgs.push("--date (or --backfill --since <date>)");
+          if (backfill && !sinceFlag) missingArgs.push("--since <date> (required with --backfill)");
+          if (missingArgs.length > 0) {
+            process.stderr.write(
+              `Error: missing required flags: ${missingArgs.join(", ")}\n${usage}` +
+              `agent_instruction: pass either --date for a single day, or --backfill --since <date> [--until <date>] for a range\n`
+            );
+            process.exitCode = 1;
+            break;
+          }
+          if (dateFlag && backfill) {
+            process.stderr.write(
+              `Error: --date and --backfill are mutually exclusive\n${usage}` +
+              `agent_instruction: use --date for a single day OR --backfill --since <date> for a range, not both\n`
+            );
+            process.exitCode = 1;
+            break;
+          }
+          if (untilFlag && !backfill) {
+            process.stderr.write(
+              `Error: --until requires --backfill --since <date>\n${usage}` +
+              `agent_instruction: --until only applies to a --backfill range; drop it for a single --date harvest\n`
+            );
+            process.exitCode = 1;
+            break;
+          }
+          let dateErr = false;
+          for (const [flagName, val] of [["--date", dateFlag], ["--since", sinceFlag], ["--until", untilFlag]] as const) {
+            if (val && !/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+              process.stderr.write(`Error: ${flagName} must be YYYY-MM-DD, got: "${val}"\nagent_instruction: use ISO date format YYYY-MM-DD\n`);
+              dateErr = true;
+            }
+          }
+          if (dateErr) {
+            process.exitCode = 1;
+            break;
+          }
+
+          try {
+            const result = await core.runImplicitHarvest({
+              date: dateFlag ?? undefined,
+              since: sinceFlag ?? undefined,
+              until: untilFlag ?? undefined,
+              project: projectFlag ?? undefined,
+              claudeDir: claudeDirFlag ?? undefined,
+              write: writeFlag,
+              experimentalSignals: experimentalSignalsFlag,
+            });
+
+            if (asJson) {
+              output(result);
+            } else {
+              const lines: string[] = [
+                `ar corrections harvest-implicit — claude-dir: ${result.claude_dir}${result.dry_run ? " (DRY-RUN — nothing written; pass --write to persist)" : ""}`,
+                "",
+                "date        sessions  neg  again  repeat  capped  gated  written  merged  unresolved",
+              ];
+              for (const d of result.days) {
+                lines.push(
+                  `${d.date}  ${String(d.sessions_scanned).padStart(8)}  ` +
+                  `${String(d.candidates_by_signal.negation).padStart(3)}  ` +
+                  `${String(d.candidates_by_signal.again).padStart(5)}  ` +
+                  `${String(d.candidates_by_signal.repeat).padStart(6)}  ` +
+                  `${String(d.capped).padStart(6)}  ${String(d.gated_out).padStart(5)}  ` +
+                  `${String(d.written).padStart(7)}  ${String(d.dedup_merged).padStart(6)}  ` +
+                  `${String(d.unresolved_project_sessions.length).padStart(10)}`,
+                );
+              }
+              output(lines.join("\n"));
+
+              // Dry-run: the full candidate list with signal attribution is
+              // what the precision-sampling review needs — surfaced here,
+              // never in a --write run (matches `ar corrections rejected`'s
+              // own economy: stats unfenced, raw listing fenced separately).
+              if (result.dry_run) {
+                const candidateLines: string[] = [];
+                for (const d of result.days) {
+                  for (const c of d.candidates) {
+                    candidateLines.push(
+                      `${c.date} ${c.project} ${c.session} [${c.signal}] ${c.outcome}${c.reason ? ` (${c.reason})` : ""}\n` +
+                      `  rule:    ${c.rule}\n` +
+                      `  context: ${c.context || "(none)"}`,
+                    );
+                  }
+                }
+                if (candidateLines.length > 0) {
+                  outputFenced(candidateLines.join("\n\n"));
+                } else {
+                  output("(no candidates detected in this range)");
+                }
+              }
+            }
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            process.stderr.write(
+              `Error running implicit harvest: ${msg}\n` +
+              `agent_instruction: verify --date/--since are valid dates and --claude-dir (if passed) exists\n`
+            );
+            process.exitCode = 1;
+          }
+          break;
+        }
         default:
-          process.stderr.write(`Unknown corrections subcommand: ${sub ?? "(none)"}\nUsage:\n  ar corrections rejected [--stats] [--json]\n  ar corrections export [--all-projects] [--include-retracted] [--since YYYY-MM-DD] [--to-backend]\n  ar corrections conflicts [--project <slug>]\n  ar corrections retract <id> --superseded-by <newer-id> [--project <slug>]\n`);
+          process.stderr.write(`Unknown corrections subcommand: ${sub ?? "(none)"}\nUsage:\n  ar corrections rejected [--stats] [--json]\n  ar corrections export [--all-projects] [--include-retracted] [--since YYYY-MM-DD] [--to-backend]\n  ar corrections conflicts [--project <slug>]\n  ar corrections retract <id> --superseded-by <newer-id> [--project <slug>]\n  ar corrections harvest-implicit --date YYYY-MM-DD [--project <slug>] [--claude-dir <path>] [--write] [--experimental-signals]\n`);
           process.exitCode = 1;
       }
       break;

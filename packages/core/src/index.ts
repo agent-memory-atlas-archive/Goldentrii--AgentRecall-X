@@ -335,6 +335,7 @@ export type {
 export type {
   CorrectionRecord,
   WriteCorrectionResult,
+  WriteCorrectionOptions,
   RetractCorrectionResult,
   RejectedCorrectionRecord,
   RejectedStats,
@@ -760,6 +761,26 @@ export type {
   TranscriptAuditDaySummary,
   TranscriptAuditResult,
 } from "./tools-logic/transcript-audit.js";
+// Reusable Phase 1a machinery (evolution p1b, `ar corrections harvest-implicit`
+// — see implicit-harvest.ts): the same day-bucketed/project-resolved
+// transcript scan + day-range flag resolver, exported so p1b never forks a
+// second walker.
+export { scanTranscripts, resolveDayRange } from "./tools-logic/transcript-audit.js";
+export type { ScannedTranscript } from "./tools-logic/transcript-audit.js";
+
+// Evolution p1b (2026-09-17) — `ar corrections harvest-implicit`: high-
+// precision, low-recall implicit correction-signal miner over USER turns
+// (negation-opener re-instructions, again-markers + a verb, repeated
+// near-identical instructions). Everything it writes is provisional (p1,
+// weight 0.3, confidence "low", provenance transcript-implicit/observed).
+export { runImplicitHarvest } from "./tools-logic/implicit-harvest.js";
+export type {
+  ImplicitHarvestOptions,
+  ImplicitHarvestCandidate,
+  ImplicitHarvestSignal,
+  ImplicitHarvestDaySummary,
+  ImplicitHarvestResult,
+} from "./tools-logic/implicit-harvest.js";
 
 // Wave 5 — corrections-prediction (north-star) + compression remainder
 export { deriveBlindSpots } from "./helpers/blind-spots.js";

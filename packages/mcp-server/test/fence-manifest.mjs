@@ -157,6 +157,15 @@ export const MANIFEST = [
   // at outputFenced()'s own definition) — a documented machine-consumption
   // contract this file's own tests JSON.parse(), never fenced by design.
   { channel: "cli_subaction", id: "outcomes.audit", status: "fenced", file: "packages/cli/src/index.ts" },
+  // Evolution p1b (2026-09-17): the numeric summary table (dates/counts) is
+  // unfenced — same class as outcomes.audit's own count columns, no raw
+  // memory-derived prose in it. The dry-run candidate list (rule/context text
+  // mined straight from the transcript, unvetted — same injection-vector
+  // class as `corrections rejected`'s raw listing) calls outputFenced()
+  // separately, which is what backs this entry. --json stays unfenced by the
+  // same established --json/structured-contract precedent as outcomes.audit
+  // / awareness.read / mirror --json.
+  { channel: "cli_subaction", id: "corrections.harvest-implicit", status: "fenced", file: "packages/cli/src/index.ts" },
 
   // ── SDK exports ─────────────────────────────────────────────────────────
   // Discovered surface = every public method of `class AgentRecall` plus

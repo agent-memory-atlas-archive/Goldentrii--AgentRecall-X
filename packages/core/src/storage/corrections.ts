@@ -1240,6 +1240,49 @@ function normalizeRule(rule: string): string {
   return distillRuleIdentity(rule);
 }
 
+export interface WriteCorrectionOptions {
+  /**
+   * Evolution p1b seam (2026-09-17, `ar corrections harvest-implicit` — see
+   * implicit-harvest.ts and its worker report for the CHALLENGE this closes).
+   *
+   * writeCorrection's ONLY gate was `isLikelyRealCorrection` — hard noise
+   * gates (length/system-fragment/doc-header) FUSED with the actionable-scan
+   * (STRONG/WEAK imperative + preference) and the soft-acknowledgment gate,
+   * with no seam to run just the hard gates. That is fine for every existing
+   * producer (check.ts's structured human_correction form, which is already
+   * imperative-shaped by construction), but a signal-miner over IMPLICIT
+   * conversational corrections (negation-opener re-instructions, again-
+   * markers, repeated near-identical instructions) deliberately captures text
+   * that often has NO clean imperative/preference shape — that is the entire
+   * point of mining implicit signal the explicit gate was never meant to see.
+   * Worse, the soft-ack gate would frequently REJECT exactly the negation-
+   * opener shape this miner targets ("No, that's wrong. <4+ words of
+   * re-instruction>" matches the ack pattern's own optional "that's wrong"
+   * clause when the re-instruction is short — the historical Loop-7 failure
+   * the actionable-scan rescue exists to prevent, replayed from the opposite
+   * side once that rescue is skipped).
+   *
+   * Forking a parallel write path was rejected (violates "storage via the
+   * canonical write path" — the whole point is to keep on-write consolidation
+   * dedup, atomic write, and index regen shared with every other producer).
+   * Refactoring isLikelyRealCorrection's internals were rejected too (v3/S-M3
+   * dropHardNoise/actionable-scan/soft-ack sequencing is a precision-tuned,
+   * heavily-regression-tested unit — see the doc comments above; splitting it
+   * would risk the Loop 7/8/14 regressions it exists to prevent).
+   *
+   * Minimal seam instead: an OPTIONAL 3rd parameter, additive only — every
+   * existing call site (dozens, see corrections.ts callers) omits it and gets
+   * byte-identical behavior. When `skipActionableGate` is true, the gate run
+   * is `dropHardNoise` ONLY (still exported, still unchanged, still the exact
+   * precision floor every other producer clears) — never the actionable scan,
+   * never the soft-ack gate. Callers that opt in accept full responsibility
+   * for their OWN signal-specific vetting (this is why the brief's severity/
+   * weight/confidence for implicit records are hard-floored low — see
+   * implicit-harvest.ts).
+   */
+  skipActionableGate?: boolean;
+}
+
 /**
  * Write a correction to persistent storage.
  * Auto-detects severity from the rule/context text.
@@ -1249,7 +1292,11 @@ function normalizeRule(rule: string): string {
  * are unaffected (the return value was void, now it is an object; ignoring it
  * still compiles and runs correctly).
  */
-export async function writeCorrection(project: string, correction: CorrectionRecord): Promise<WriteCorrectionResult> {
+export async function writeCorrection(
+  project: string,
+  correction: CorrectionRecord,
+  opts?: WriteCorrectionOptions,
+): Promise<WriteCorrectionResult> {
   // Capture-quality gate — reject noise before touching disk.
   // v3 (Loop 8): classify on the FULL correction text, not the truncated rule.
   // `rule` is a first-sentence title slice (set by check.ts) that hid the
@@ -1261,11 +1308,18 @@ export async function writeCorrection(project: string, correction: CorrectionRec
   // matched a hard gate is rejected regardless of which field it came from.
   const ruleText = (correction.rule ?? "").trim();
   const contextText = (correction.context ?? "").trim();
-  const ruleGate = ruleText ? isLikelyRealCorrection(ruleText) : { ok: false, reason: "empty rule" };
+  // p1b seam — see WriteCorrectionOptions.skipActionableGate above.
+  const classify = (text: string): { ok: boolean; reason?: string } =>
+    opts?.skipActionableGate
+      ? dropHardNoise(text)
+        ? { ok: true }
+        : { ok: false, reason: "implicit-gate" }
+      : isLikelyRealCorrection(text);
+  const ruleGate = ruleText ? classify(ruleText) : { ok: false, reason: "empty rule" };
   // Only consult context when it adds NEW text (production: context ⊇ rule).
   const contextGate =
     contextText && contextText !== ruleText
-      ? isLikelyRealCorrection(contextText)
+      ? classify(contextText)
       : { ok: false as const };
   const gate = ruleGate.ok || contextGate.ok ? { ok: true } : ruleGate;
   if (!gate.ok) {
