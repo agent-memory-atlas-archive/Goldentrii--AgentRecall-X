@@ -19,6 +19,12 @@ import { todayISO, truncateUtf8Bytes } from "../storage/fs-utils.js";
 import { readAlignmentLog, extractWatchPatterns, computeDecisionCalibration, type WatchForPattern } from "../helpers/alignment-patterns.js";
 import { readCorrections, readActiveCorrections, readP0Corrections, recordOutcome, getCorrectionKPIs, rankCorrections, type CorrectionRecord } from "../storage/corrections.js";
 import { activationEnabled, activationTieBreak, loadAssocGraph, todayDayString } from "../retrieval/activation.js";
+// Evolution p4 (2026-09-17) — soft-constraint ladder render tag. `tierOf` is
+// recomputed FRESH here (never reads CorrectionRecord.tier — that field is a
+// write-time cache, see corrections.ts's doc comment on it and retier.ts's
+// CHALLENGE resolution) so the tag shown at session_start is always current,
+// not whatever `ar corrections retier --write` last persisted.
+import { tierOf } from "./retier.js";
 import { listPendingCorrections } from "../storage/pending.js";
 import { readBlindSpots } from "../storage/blind-spots-store.js";
 import { predictCorrection } from "./predict-correction.js";
@@ -136,11 +142,16 @@ export function continuityHeaderText(allCrossProject: boolean | undefined): stri
  * (i.e. len > rule.len + 20 chars). When rule == context (the common case),
  * omitting context saves ~50% of per-correction payload.
  */
-function toSlimCorrection(c: CorrectionRecord): SlimCorrection {
+function toSlimCorrection(c: CorrectionRecord, asOfDay: string): SlimCorrection {
   const slim: SlimCorrection = {
     id: c.id,
     severity: c.severity,
     rule: c.rule,
+    // Evolution p4 — additive presentation tag; see this file's import
+    // comment on `tierOf` for why it is recomputed rather than read off
+    // `c.tier`. Never fed back into ranking/budget — see applyCorrectionBudget,
+    // which only ever reads `severity`/`rule`/`context` from this shape.
+    tier: tierOf(c, asOfDay),
   };
   const ctx = (c.context ?? "").trim();
   const rule = (c.rule ?? "").trim();
@@ -282,6 +293,17 @@ export interface SlimCorrection {
   rule: string;
   /** Only present when meaningfully different from rule (i.e. has more content). */
   context?: string;
+  /**
+   * Evolution p4 (2026-09-17) — soft-constraint ladder tag, computed FRESH by
+   * `tierOf()` at render time (never read off the stored `CorrectionRecord.tier`
+   * cache — see that field's doc comment). ADDITIVE PRESENTATION ONLY:
+   * renderers append it as a suffix tag; nothing in this file's P0 selection,
+   * `rankCorrections`/activation ordering, or `applyCorrectionBudget` char-cap
+   * logic reads this field. Optional only for structural back-compat with any
+   * hand-built pre-p4 fixture — every record `toSlimCorrection` actually
+   * produces has one.
+   */
+  tier?: "gate" | "nudge" | "watch";
 }
 
 export interface SessionStartResult {
@@ -1032,7 +1054,12 @@ export async function sessionStart(input: SessionStartInput): Promise<SessionSta
   // Slim corrections: strip KPI fields, keep only what the LLM acts on.
   // applyCorrectionBudget ensures P0s always survive the total char cap.
   // A/B OFF arm: corrections is an empty array — the agent never sees them.
-  const correctionsSlim = applyCorrectionBudget(rawCorrections.map(toSlimCorrection));
+  // Evolution p4: same "as of" day activation's tie-break already computes
+  // for this call (todayDayString() — local calendar day) — reused here so
+  // both p3's and p4's per-record math share one "now" for this request.
+  const correctionsSlim = applyCorrectionBudget(
+    rawCorrections.map((c) => toSlimCorrection(c, todayDayString())),
+  );
   const corrections: SlimCorrection[] = abArm === "off" ? [] : correctionsSlim;
 
   // 7b. Fix #2 (dual-channel capture gate, 2026-09-11): pending-review

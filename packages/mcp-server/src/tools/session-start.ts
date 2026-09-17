@@ -105,7 +105,11 @@ export function formatTerse(result: SessionStartResult): string {
     lines.push("");
     lines.push("⛔ HARD RULES (always follow, no exceptions):");
     for (const c of result.corrections) {
-      lines.push(`  [${c.severity.toUpperCase()}] ${trunc(c.rule, 120)}`);
+      // Evolution p4 — additive tier tag ("[gate]"/"[nudge]"/"[watch]"),
+      // appended as a suffix; absent entirely when `tier` is unset (pre-p4
+      // fixture) — see SlimCorrection.tier's doc comment (agent-recall-core).
+      const tierTag = c.tier ? ` [${c.tier}]` : "";
+      lines.push(`  [${c.severity.toUpperCase()}] ${trunc(c.rule, 120)}${tierTag}`);
     }
   }
 
@@ -236,14 +240,17 @@ export function formatTerse(result: SessionStartResult): string {
   return [fenced, ...tail].join("\n");
 }
 
-function formatVerbose(result: SessionStartResult): string {
+/** Exported for unit testing (evolution p4, tier-tag additivity proof) — pure formatter, no I/O. */
+export function formatVerbose(result: SessionStartResult): string {
   const lines: string[] = [];
 
   if (result.corrections && result.corrections.length > 0) {
     lines.push("## ⛔ HARD RULES — always follow, no exceptions");
     lines.push("These are behavioral constraints, not suggestions. Treat violations as errors.");
     for (const c of result.corrections) {
-      lines.push(`[${c.severity.toUpperCase()}] ${c.rule}`);
+      // Evolution p4 — same additive tier tag as formatTerse above.
+      const tierTag = c.tier ? ` [${c.tier}]` : "";
+      lines.push(`[${c.severity.toUpperCase()}] ${c.rule}${tierTag}`);
       // Slim corrections carry `context` only when it adds material content
       // beyond the rule — verbose mode is where those bytes reach the agent.
       // Terse mode stays rule-only by design.

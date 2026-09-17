@@ -171,6 +171,15 @@ export const MANIFEST = [
   // same established --json/structured-contract precedent as outcomes.audit
   // / awareness.read / mirror --json.
   { channel: "cli_subaction", id: "corrections.harvest-implicit", status: "fenced", file: "packages/cli/src/index.ts" },
+  // Evolution p4 (2026-09-17): `ar corrections retier`. The main tier table
+  // is structural-only (project/id/tier-enum/trigger-labels — unfenced,
+  // same class as assoc.rebuild below) but the promote-to-gate/archive
+  // proposal listings quote each candidate's `rule` (human-authored
+  // correction prose an owner needs to read to act on the proposal) via a
+  // separate outputFenced() call each — same class as
+  // corrections.harvest-implicit's dry-run candidate listing above, which
+  // is what backs this "fenced" classification.
+  { channel: "cli_subaction", id: "corrections.retier", status: "fenced", file: "packages/cli/src/index.ts" },
   // Evolution p2 (2026-09-17): `ar assoc rebuild` / `ar assoc stats`.
   { channel: "cli_subaction", id: "assoc.--help", status: "allowlisted", reason: "static, hardcoded help text — not retrieved content." },
   { channel: "cli_subaction", id: "assoc.-h", status: "allowlisted", reason: "alias of assoc --help — same static help text." },

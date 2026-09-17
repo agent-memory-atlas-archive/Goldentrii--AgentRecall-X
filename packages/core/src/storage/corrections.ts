@@ -46,6 +46,20 @@ export type FailureClass =
   | "publish_gate"
   | "other";
 
+/**
+ * Evolution p4 (2026-09-17) — the soft-constraint ladder `ar corrections
+ * retier` computes via `tierOf()` (tools-logic/retier.ts):
+ *   "gate"  — hard-enforced, non-negotiable (subset of p0)
+ *   "nudge" — surfaced but advisory
+ *   "watch" — background-only, lowest priority
+ * Declared HERE (storage layer) rather than in retier.ts because the field
+ * it types (`CorrectionRecord.tier` below) lives here — retier.ts (tools-
+ * logic) imports this type FROM corrections.ts, never the reverse, matching
+ * this file's existing "low-level storage layer never imports the
+ * tools-logic stack" discipline (see betaPosterior's doc comment below).
+ */
+export type CorrectionTier = "gate" | "nudge" | "watch";
+
 export interface CorrectionRecord {
   id: string;       // date-slug
   date: string;     // YYYY-MM-DD
@@ -163,6 +177,29 @@ export interface CorrectionRecord {
    * caller's original, unmixed list.
    */
   applies_when?: string[];
+  /**
+   * Evolution p4 (2026-09-17, soft-constraint ladder) — the LAST-PERSISTED
+   * output of `tierOf(record, asOfDay)` (tools-logic/retier.ts), written
+   * ONLY by `ar corrections retier --write` via `setCorrectionTier()`
+   * below. ADDITIVE + OPTIONAL: absent on every pre-p4 record and on any
+   * record `ar corrections retier` has never touched.
+   *
+   * READ-CONTRACT (the CHALLENGE this field's design had to resolve): this
+   * is a WRITE-TIME CACHE, not truth. `heeded_count`/`recurrence_count`/
+   * `not_violated_count`/`last_retrieved` all keep accruing between retier
+   * runs, so `tierOf(record, today)` can legitimately disagree with this
+   * field the moment ANY outcome lands after the last `--write`. Consumers
+   * that need a CURRENT tier (e.g. a future session_start gating decision)
+   * MUST call `tierOf()` fresh — this field exists so `ar corrections
+   * retier --dry-run` can show "current [stored] vs computed" drift and so
+   * `--write` has something idempotent to compare against (a second
+   * `--write` with unchanged inputs writes nothing — see retier.ts). The
+   * session_start render tag (evolution p4 goal 3) ALSO recomputes fresh
+   * rather than reading this field, for the same reason. Never treat
+   * absence as "watch" by convention — absence means "never retiered",
+   * which is a different fact than "computed watch".
+   */
+  tier?: CorrectionTier;
 }
 
 /**
@@ -1791,6 +1828,73 @@ export async function recordOutcome(outcome: CorrectionOutcome): Promise<void> {
         `event and \`ar outcomes rebuild\` re-derives the counters.`,
       );
       return;
+    }
+    throw err;
+  }
+}
+
+export interface SetCorrectionTierResult {
+  written: boolean;
+  /** Present only when `written` is false because of a lock-contention skip. */
+  error?: string;
+}
+
+/**
+ * Evolution p4 (2026-09-17, soft-constraint ladder) — the SANCTIONED
+ * single-record write path `ar corrections retier --write` uses to persist
+ * `tierOf()`'s (tools-logic/retier.ts) computed tier onto a correction.
+ * Mirrors `retractCorrection`'s locked read→find→mutate→atomic-rewrite→
+ * index-regen shape EXACTLY (same lock name, same existing-filename reuse,
+ * same atomic-write primitive) — this is a NEW field being written through
+ * the EXISTING write mechanism, not a new write mechanism. ADDITIVE: only
+ * `tier` changes; every other field on the record is preserved byte-for-byte.
+ *
+ * IDEMPOTENT BY CONSTRUCTION: no-ops (returns `{written:false}`, touches
+ * disk not at all — no lock even acquired past the read) when the record
+ * already carries this exact tier. This is what makes a second
+ * `ar corrections retier --write` run over unchanged inputs write zero
+ * records (see retier.ts's own `changed` guard, which this double-checks
+ * against a FRESH read rather than trusting the caller's snapshot).
+ *
+ * Lock-contention handling mirrors `recordOutcome`, not `retractCorrection`:
+ * retier writes MANY records in one CLI invocation (a loop, not a single
+ * human-typed command), so one record's lock timeout must not abort the
+ * whole run — it is caught, logged, and reported to the caller as a skip
+ * (re-runnable later; `tier` is a derived cache, never a ledger, so nothing
+ * is lost by skipping — the next `ar corrections retier --write` recomputes
+ * it fresh from `tierOf()`, not from any partial state here).
+ */
+export async function setCorrectionTier(
+  project: string,
+  id: string,
+  tier: CorrectionTier,
+): Promise<SetCorrectionTierResult> {
+  const dir = correctionsDir(project);
+  try {
+    return await withLock(`corrections-${project}`, (): SetCorrectionTierResult => {
+      const target = readCorrections(project).find((r) => r.id === id);
+      if (!target) return { written: false, error: `correction not found: ${id}` };
+      if (target.tier === tier) return { written: false }; // already correct — idempotent no-op
+
+      const updated: CorrectionRecord = { ...target, tier };
+      const filename = findExistingCorrectionFile(dir, updated.id)
+        ?? `${updated.date}--${slugify(updated.rule || updated.id)}.json`;
+      const filepath = path.join(dir, filename);
+      writeRecordAtomic(filepath, updated);
+      // W2-1: regenerate the materialized index on every corrections mutation.
+      // `tier` is not one of `_index.md`'s rendered columns today, but this
+      // keeps the invariant "every mutation regenerates the index" uniform
+      // rather than carving out a silent exception for this one writer.
+      regenerateCorrectionsIndex(project);
+      return { written: true };
+    });
+  } catch (err) {
+    if (err instanceof LockContentionError) {
+      console.error(
+        `[agent-recall] setCorrectionTier(${id}, ${tier}): ${err.message} ` +
+        `— tier update skipped this run; a later \`ar corrections retier --write\` will retry.`,
+      );
+      return { written: false, error: "lock contention" };
     }
     throw err;
   }

@@ -305,6 +305,10 @@ export {
   // identity + the severity classifier (shared with the pending staging path).
   distillRuleIdentity,
   detectSeverity,
+  // Evolution p4 (2026-09-17) — the soft-constraint ladder's sanctioned
+  // single-record write path (see tools-logic/retier.ts's tierOf/demotionOf
+  // for the pure formulas that decide WHAT to write here).
+  setCorrectionTier,
 } from "./storage/corrections.js";
 
 // Storage — pending-corrections staging area (Fix #2, dual-channel capture
@@ -345,6 +349,9 @@ export type {
   // v4 W2 — rankCorrections' return shape (CorrectionRecord + decay_class +
   // effective confidence annotations).
   RankedCorrection,
+  // Evolution p4 — the ladder tier type + setCorrectionTier's result shape.
+  CorrectionTier,
+  SetCorrectionTierResult,
 } from "./storage/corrections.js";
 
 // Tools-logic — P2 supersession (contradiction → supersede; suggest-default)
@@ -844,6 +851,33 @@ export type {
   ActivationLegNote,
   ActivationTieBreakOptions,
 } from "./retrieval/activation.js";
+
+// Evolution p4 (2026-09-17) — `ar corrections retier`: the soft-constraint
+// ladder (gate/nudge/watch). tierOf/demotionOf are pure, hand-tuned formulas
+// over a single CorrectionRecord; runRetier is the cross-project
+// orchestration (--dry-run reports, --write persists via setCorrectionTier).
+export {
+  GATE_MIN_PROOF_CONFIDENCE,
+  GATE_RETRIEVED_WITHIN_DAYS,
+  NUDGE_P1_MIN_PROOF_CONFIDENCE,
+  NUDGE_RETRIEVED_WITHIN_DAYS,
+  DEMOTE_NOT_VIOLATED_MIN,
+  DEMOTE_RETRIEVAL_STALE_DAYS,
+  ARCHIVE_STALE_DAYS,
+  tierOf,
+  stepDownTier,
+  demotionOf,
+  archiveCandidates,
+  promoteToGateCandidates,
+  runRetier,
+} from "./tools-logic/retier.js";
+export type {
+  RetierOptions,
+  RetierRow,
+  RetierResult,
+  ArchiveCandidate,
+  PromoteToGateCandidate,
+} from "./tools-logic/retier.js";
 
 // Wave 5 — corrections-prediction (north-star) + compression remainder
 export { deriveBlindSpots } from "./helpers/blind-spots.js";

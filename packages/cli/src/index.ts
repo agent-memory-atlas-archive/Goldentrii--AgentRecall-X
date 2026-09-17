@@ -169,6 +169,10 @@ DIAGNOSTICS:
   ar corrections retract <id> --superseded-by <newer-id> [--project <slug>]
       Human-confirmed, single-record retract (active:false, superseded_by set). Both <id> and
       --superseded-by must be explicit — no --all/--yes, no bulk mode, never auto-retracts.
+  ar corrections retier [--write] [--store <path>] [--as-of YYYY-MM-DD] [--proposals-out <path>] [--json]
+      Soft-constraint ladder (gate/nudge/watch) — cross-project. Dry-run by DEFAULT (reports the full
+      tier table + proposal lists, writes nothing); --write persists via the locked record-write path.
+      Demotion is automatic; archive/promote-to-gate stay proposal lists ONLY (never applied/deleted).
   ar embeddings setup|rebuild|status   OPT-IN local semantic recall (fix7). \`setup\` installs the local ONNX
       runtime + downloads the model once (nothing ships in this package; zero cloud inference, no telemetry);
       \`rebuild\` (re)builds the content-hash-keyed vector index incrementally (--project <slug>, --force);
@@ -1099,8 +1103,110 @@ async function main(): Promise<void> {
           }
           break;
         }
+        case "retier": {
+          // Evolution p4 — the soft-constraint ladder (gate/nudge/watch).
+          // Dry-run by DEFAULT (mirrors harvest-implicit's/assoc's idiom):
+          // nothing is written unless --write is passed. --store overrides
+          // the storage root for THIS call only (never mutates process-wide
+          // state past the call — see core's retier.ts withStoreRoot doc).
+          const retierRest = rest.slice(1);
+          const writeFlag = hasFlag("--write", retierRest);
+          const storeFlag = getFlag("--store", retierRest);
+          const asOfFlag = getFlag("--as-of", retierRest);
+          const proposalsOutFlag = getFlag("--proposals-out", retierRest);
+          const asJson = hasFlag("--json", retierRest);
+
+          if (asOfFlag !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(asOfFlag)) {
+            process.stderr.write(`Error: --as-of must be YYYY-MM-DD, got: "${asOfFlag}"\nagent_instruction: use ISO date format YYYY-MM-DD\n`);
+            process.exitCode = 1;
+            break;
+          }
+
+          try {
+            const result = await core.runRetier({
+              storeRoot: storeFlag ?? undefined,
+              asOfDay: asOfFlag ?? undefined,
+              write: writeFlag,
+            });
+
+            if (proposalsOutFlag) {
+              // A NEW file at an operator-chosen path — never a corrections-
+              // store write, so this is safe to do even on a --dry-run call.
+              fs.writeFileSync(
+                proposalsOutFlag,
+                JSON.stringify(
+                  {
+                    as_of: result.as_of,
+                    promote_to_gate_candidates: result.promote_to_gate_candidates,
+                    archive_candidates: result.archive_candidates,
+                  },
+                  null,
+                  2,
+                ) + "\n",
+                "utf-8",
+              );
+            }
+
+            if (asJson) {
+              output(result);
+            } else {
+              const dist = result.tier_distribution;
+              const lines: string[] = [
+                `ar corrections retier — store: ${result.store_root}  as-of: ${result.as_of}` +
+                  (result.dry_run ? " (DRY-RUN — nothing written; pass --write to persist)" : ""),
+                `projects scanned: ${result.projects_scanned}   corrections: ${result.rows.length}`,
+                `tier distribution (final): gate=${dist.gate}  nudge=${dist.nudge}  watch=${dist.watch}`,
+                `demotions this run: ${result.demoted.length}   promote-to-gate candidates: ${result.promote_to_gate_candidates.length}   archive candidates: ${result.archive_candidates.length}`,
+                result.dry_run ? "" : `written: ${result.written}${result.write_errors > 0 ? `   write_errors: ${result.write_errors} (lock contention — safe to re-run)` : ""}`,
+                "",
+                "project  id  current->computed->final  triggers",
+              ].filter((l) => l !== "");
+              for (const r of result.rows) {
+                const arrow = `${r.stored_tier ?? "(none)"}->${r.computed_tier}->${r.final_tier}`;
+                lines.push(
+                  `  [${r.severity}] ${r.project}/${r.id}  ${arrow}${r.triggers.length > 0 ? `  triggers: ${r.triggers.join(",")}` : ""}`,
+                );
+              }
+              // Structural-only table above (project/id/tier-enum/trigger-labels
+              // — no memory-derived free text) stays unfenced, matching
+              // `ar assoc rebuild`'s pure-count render. The two proposal
+              // listings below quote each candidate's `rule` (human-authored
+              // correction prose — an owner reviewing a promote/archive
+              // proposal needs to read it) — P1 fence, same class as
+              // `ar corrections conflicts`/`ar corrections rejected`.
+              output(lines.join("\n"));
+
+              if (result.promote_to_gate_candidates.length > 0) {
+                const pLines = ["", "promote-to-gate candidates (proposal only — never auto-applied):"];
+                for (const p of result.promote_to_gate_candidates) {
+                  pLines.push(`  [${p.severity}] ${p.project}/${p.id}: ${p.rule}`);
+                }
+                outputFenced(pLines.join("\n"));
+              }
+              if (result.archive_candidates.length > 0) {
+                const aLines = ["", "archive candidates (proposal only — never applied/deleted/retracted):"];
+                for (const a of result.archive_candidates) {
+                  aLines.push(`  ${a.project}/${a.id} (last touch: ${a.last_touch ?? "never"}): ${a.rule}`);
+                }
+                outputFenced(aLines.join("\n"));
+              }
+            }
+
+            if (proposalsOutFlag) {
+              process.stderr.write(`[ar] proposals written to ${proposalsOutFlag}\n`);
+            }
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            process.stderr.write(
+              `Error running retier: ${msg}\n` +
+              `agent_instruction: verify --store (if passed) is a readable directory and --as-of (if passed) is YYYY-MM-DD\n`
+            );
+            process.exitCode = 1;
+          }
+          break;
+        }
         default:
-          process.stderr.write(`Unknown corrections subcommand: ${sub ?? "(none)"}\nUsage:\n  ar corrections rejected [--stats] [--json]\n  ar corrections export [--all-projects] [--include-retracted] [--since YYYY-MM-DD] [--to-backend]\n  ar corrections conflicts [--project <slug>]\n  ar corrections retract <id> --superseded-by <newer-id> [--project <slug>]\n  ar corrections harvest-implicit --date YYYY-MM-DD [--project <slug>] [--claude-dir <path>] [--write] [--experimental-signals]\n`);
+          process.stderr.write(`Unknown corrections subcommand: ${sub ?? "(none)"}\nUsage:\n  ar corrections rejected [--stats] [--json]\n  ar corrections export [--all-projects] [--include-retracted] [--since YYYY-MM-DD] [--to-backend]\n  ar corrections conflicts [--project <slug>]\n  ar corrections retract <id> --superseded-by <newer-id> [--project <slug>]\n  ar corrections harvest-implicit --date YYYY-MM-DD [--project <slug>] [--claude-dir <path>] [--write] [--experimental-signals]\n  ar corrections retier [--write] [--store <path>] [--as-of YYYY-MM-DD] [--proposals-out <path>] [--json]\n`);
           process.exitCode = 1;
       }
       break;
@@ -1565,7 +1671,10 @@ async function main(): Promise<void> {
             lines.push("🚨 P0 rules — follow strictly:");
             for (const c of p0s.slice(0, 5)) {
               const rule = c.rule || JSON.stringify(c);
-              lines.push(`   - ${rule.slice(0, 80)} → P0 correction — follow this rule strictly`);
+              // Evolution p4 — additive tier tag, same convention as the MCP
+              // formatTerse/formatVerbose renderers of this same field.
+              const tierTag = c.tier ? ` [${c.tier}]` : "";
+              lines.push(`   - ${rule.slice(0, 80)} → P0 correction — follow this rule strictly${tierTag}`);
             }
           }
         }
