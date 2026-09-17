@@ -1,6 +1,6 @@
 # Evolution Program P0–P4 — Final Report
 
-**Date:** 2026-09-17 · **Branch:** `evolution-p0-p4` (9 commits + this doc, main @ 4bed4dc → fd67e4f release) · **Version:** 3.4.50 → **3.4.51** (patch, local only — push/npm publish owner-gated)
+**Date:** 2026-09-17 · **Branch:** `evolution-p0-p4` (9 commits + this doc, main @ 4bed4dc → aef708a release) · **Version:** 3.4.50 → **3.4.51** (patch, local only — push/npm publish owner-gated)
 **Duration:** 12:50:40 → 20:48:14 (+0200) = **7 h 57 m** · **Subagent tokens:** 5,630,624 (mandate) + 557,195 (pre-mandate repo understanding) = **6,187,819** across 42 Sonnet-5 subagents in 12 workflows (orchestrator main-loop tokens not separately metered)
 **Method:** plywood-compiled briefs → Sonnet 5 workers → independent Sonnet 5 reviewers → fixers → independent verifiers. Every phase committed only after independent verification. Zero pushes, zero publishes, zero deletions.
 
@@ -10,12 +10,12 @@
 |---|---|---|
 | 7ff7af4 | P0 | Instrument honesty: bench PARSE-ONLY labeling (vacuous-verify fix); harness-kit multi-record drop + rule_date=None blind-spot surfaced; `evolution-baseline.mjs` denominator snapshot (read-only, deterministic) |
 | c59f04d | P1a | `ar outcomes audit` — transcript-grounded injection adjudication (recurred > cited > ignored), ledger-only kinds gated on `transcript-audit:` evidence, idempotent, adjudication independent of the agent's own summary |
-| c886b3c | P1b | `ar corrections harvest-implicit` — implicit correction miner; 3 precision rounds against real transcripts (≤5% → 28% → 100%); shipped default = negation-opener signal only; (b)/(c) behind `--experimental-signals` |
+| a951abf | P1b | `ar corrections harvest-implicit` — implicit correction miner; 3 precision rounds against real transcripts (≤5% → 28% → 100%); shipped default = negation-opener signal only; (b)/(c) behind `--experimental-signals` |
 | ef3fcda | P1c | evolution-baseline **v2**: audit events/wk, injection_precision, implicit counts, injection-outcome coverage (dual denominators, null-never-0) |
-| 725684d | P2 | `ar assoc` — Hebbian co-activation ledger (S_ji): undirected correction graph from cited events, weight = distinct sessions, deterministic rebuild, DEGENERATE probe |
-| 01ae440 | P3 | ACT-R activation leg `A_i = B_i + Σ W_j·S_ji`, flag-gated (`AGENT_RECALL_ACTIVATION=1`, OFF = byte-identical, fs-probe-verified); temporal-split counterfactual eval with claim gates; MATH.md §c (HAND-TUNED S_DECAY=30, ACT_ALPHA=0.2); Hopfield deferral documented |
-| f8b2bf6 | P4 | `ar corrections retier` — gate/nudge/watch ladder, auto-demotion (not_violated plateau, 90d staleness), owner-gated promote/archive proposals, tier tag in all 3 renderers (additivity byte-proven) |
-| fd67e4f | rel | v3.4.51 across 4 packages + types.ts VERSION (version-consistency test caught the constant I missed) |
+| 497e475 | P2 | `ar assoc` — Hebbian co-activation ledger (S_ji): undirected correction graph from cited events, weight = distinct sessions, deterministic rebuild, DEGENERATE probe |
+| 217b3b6 | P3 | ACT-R activation leg `A_i = B_i + Σ W_j·S_ji`, flag-gated (`AGENT_RECALL_ACTIVATION=1`, OFF = byte-identical, fs-probe-verified); temporal-split counterfactual eval with claim gates; MATH.md §c (HAND-TUNED S_DECAY=30, ACT_ALPHA=0.2); Hopfield deferral documented |
+| c79a4f4 | P4 | `ar corrections retier` — gate/nudge/watch ladder, auto-demotion (not_violated plateau, 90d staleness), owner-gated promote/archive proposals, tier tag in all 3 renderers (additivity byte-proven) |
+| aef708a | rel | v3.4.51 across 4 packages + types.ts VERSION (version-consistency test caught the constant I missed) |
 
 Suites at HEAD: core 1856+/1856+, cli 293/293, mcp-server 79/79, root `npm test` exit 0, lint clean, bench fixture lane green.
 
