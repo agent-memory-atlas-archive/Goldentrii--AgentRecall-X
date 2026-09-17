@@ -13,7 +13,21 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { getRoot, isValidProjectSlug, utf8SafeEndBoundary, utf8SafeStartBoundary } from "agent-recall-core";
+import {
+  utf8SafeEndBoundary,
+  utf8SafeStartBoundary,
+  isSystemText,
+  textFromContent,
+} from "agent-recall-core";
+
+// F1 (moved 2026-09-17, evolution p1a): resolveSessionProject and its
+// ProjectCandidate/ResolvedSessionProject types now live in agent-recall-core
+// (packages/core/src/helpers/transcript-project.ts) — transcript-audit.ts
+// (also core) needs the SAME namer, and core cannot depend on this cli
+// package. Re-exported here so every existing call site in this package
+// (index.ts's archive hook, this file's own tests) keeps working unchanged.
+export { resolveSessionProject } from "agent-recall-core";
+export type { ProjectCandidate, ResolvedSessionProject } from "agent-recall-core";
 
 export interface SessionInfo {
   /** Absolute path to the .jsonl file */
@@ -110,201 +124,11 @@ function extractProjectSlug(text: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// F1 — unified, claim-not-generate project namer
-// ---------------------------------------------------------------------------
-//
-// The old namer (extractProjectSlug above) has no threshold and no boilerplate
-// exclusion: a frequency count over the RAW head/tail text is trivially
-// dominated by hook-injected startup content (folder-lint file lists, the
-// MEMORY.md index dump injected as a system-reminder, etc.) that mentions
-// `/Users/<user>/Projects/<name>` paths having nothing to do with the actual
-// conversation. Confirmed empirically against the 2026-07-31 continuity
-// incident: it misdirected forensics onto two unrelated sessions purely via
-// this boilerplate (see reports/2026-07-31-continuity-fixture.md).
-//
-// resolveSessionProject() replaces frequency-only voting with three signals,
-// combined under a claim-not-generate policy: prefer routing to a project
-// that ALREADY EXISTS in the store; only allow minting a brand-new slug when
-// strongly corroborated by both content AND an on-disk `~/Projects/<name>`.
-
-/** A candidate project slug with its combined signal count. */
-export interface ProjectCandidate {
-  slug: string;
-  count: number;
-}
-
-export interface ResolvedSessionProject {
-  /** The resolved slug, an existing/gated new slug, or "auto" when nothing qualifies. */
-  slug: string;
-  /** top_count / total_candidate_counts across all signals; 0 when slug === "auto". */
-  confidence: number;
-  /** Every candidate seen, merged across signals, ranked by count desc — kept
-   *  even when not selected, so a low-confidence resolution is re-fileable
-   *  later (recorded verbatim in the session card, F3). */
-  candidates: ProjectCandidate[];
-}
-
-/** Records whose text is hook stdout/boilerplate, never real conversation content. */
-function isBoilerplateRecord(rec: Record<string, unknown>): boolean {
-  return rec.type === "attachment";
-}
-
-function bumpCount(counts: Map<string, number>, slug: string, by = 1): void {
-  counts.set(slug, (counts.get(slug) ?? 0) + by);
-}
-
-/** Signal 1: cwd field frequency, restricted to paths under ~/Projects/<name>. */
-const CWD_PROJECT_RE = /^\/Users\/[^/]+\/(?:[Pp]rojects?)\/([^/]+)/;
-
-function cwdSignal(lines: unknown[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const d of lines) {
-    if (!d || typeof d !== "object") continue;
-    const cwd = (d as Record<string, unknown>).cwd;
-    if (typeof cwd !== "string") continue;
-    const m = CWD_PROJECT_RE.exec(cwd);
-    if (!m) continue;
-    bumpCount(counts, m[1].replace(/[`'".,;)>]+$/, ""));
-  }
-  return counts;
-}
-
-/**
- * Signal 2: the existing PROJECT_RE content scan, but restricted to real
- * user/assistant message text — hook `attachment` records (boilerplate) and
- * system-reminder-prefixed text are excluded before the regex ever sees them.
- */
-function contentSignal(lines: unknown[]): Map<string, number> {
-  const counts = new Map<string, number>();
-  for (const d of lines) {
-    if (!d || typeof d !== "object") continue;
-    const rec = d as Record<string, unknown>;
-    if (isBoilerplateRecord(rec)) continue;
-    if (rec.type !== "user" && rec.type !== "assistant") continue;
-    const msg = rec.message as Record<string, unknown> | undefined;
-    const text = textFromContent(msg?.content);
-    if (!text || isSystemText(text)) continue;
-
-    PROJECT_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = PROJECT_RE.exec(text)) !== null) {
-      bumpCount(counts, m[1].replace(/[`'".,;)>]+$/, ""));
-    }
-  }
-  return counts;
-}
-
-/** Slugs that already have a project directory under AR_ROOT/projects. */
-function listExistingProjectSlugs(): Set<string> {
-  try {
-    const projectsDir = path.join(getRoot(), "projects");
-    if (!fs.existsSync(projectsDir)) return new Set();
-    return new Set(
-      fs
-        .readdirSync(projectsDir, { withFileTypes: true })
-        .filter((e) => e.isDirectory())
-        .map((e) => e.name),
-    );
-  } catch {
-    return new Set();
-  }
-}
-
-/**
- * Unified, claim-not-generate project namer (F1).
- *
- * Merges the cwd signal (Signal 1) and the boilerplate-excluded content scan
- * (Signal 2), then resolves under a claim-not-generate policy (Signal 3):
- *   - Scan merged candidates in rank order; the first one that already has an
- *     on-disk project directory wins outright ("prefer an existing slug").
- *   - Otherwise, the single top-ranked candidate may mint a BRAND-NEW slug
- *     only if it clears both bars: content-signal count >= 3 (a real project
- *     is mentioned in actual dialogue repeatedly, not once via noise) AND a
- *     matching `~/Projects/<name>` directory exists on disk.
- *   - Otherwise: "auto" (confidence 0) — never invent a slug from a single
- *     weak hit.
- * Every candidate slug is validated against `isValidProjectSlug` before it
- * can be selected (no deny-list bypass) — invalid candidates are skipped,
- * never selected, though they remain visible in `candidates` for transparency.
- */
-export function resolveSessionProject(headText: string, tailText: string): ResolvedSessionProject {
-  const lines = [...parseLines(headText), ...parseLines(tailText)];
-
-  const cwdCounts = cwdSignal(lines);
-  const contentCounts = contentSignal(lines);
-
-  const merged = new Map<string, number>();
-  for (const [slug, c] of cwdCounts) bumpCount(merged, slug, c);
-  for (const [slug, c] of contentCounts) bumpCount(merged, slug, c);
-
-  const ranked: ProjectCandidate[] = [...merged.entries()]
-    .map(([slug, count]) => ({ slug, count }))
-    .sort((a, b) => b.count - a.count);
-
-  const totalCount = ranked.reduce((sum, c) => sum + c.count, 0);
-  const confidenceOf = (count: number): number => (totalCount > 0 ? count / totalCount : 0);
-
-  const existingSlugs = listExistingProjectSlugs();
-
-  // Prefer an existing (already-on-disk) slug — scan the FULL ranked list,
-  // not just the top candidate, so a strong-but-second-place existing match
-  // still wins over a noisier top candidate that has no home on disk.
-  for (const cand of ranked) {
-    if (!isValidProjectSlug(cand.slug)) continue;
-    if (existingSlugs.has(cand.slug)) {
-      return { slug: cand.slug, confidence: confidenceOf(cand.count), candidates: ranked };
-    }
-  }
-
-  // No existing match anywhere in the ranking — the top candidate may mint a
-  // brand-new slug, but only when strongly corroborated (never generate from
-  // a single boilerplate-adjacent hit).
-  const top = ranked.find((c) => isValidProjectSlug(c.slug));
-  if (top) {
-    const contentOnlyCount = contentCounts.get(top.slug) ?? 0;
-    const projectsHomeDir = path.join(os.homedir(), "Projects", top.slug);
-    if (contentOnlyCount >= 3 && fs.existsSync(projectsHomeDir)) {
-      return { slug: top.slug, confidence: confidenceOf(top.count), candidates: ranked };
-    }
-  }
-
-  return { slug: "auto", confidence: 0, candidates: ranked };
-}
-
-// ---------------------------------------------------------------------------
 // Message extraction
 // ---------------------------------------------------------------------------
-
-const SYSTEM_PREFIXES = [
-  /^dangerously-skip/i,
-  /^<local-command/,
-  /^<command-name/,
-  /^<command-message/,
-  /^<command-args/,
-  /^<system-reminder/,
-  /^<user-prompt-submit/,
-];
-
-function isSystemText(text: string): boolean {
-  const t = text.trimStart();
-  return SYSTEM_PREFIXES.some((re) => re.test(t));
-}
-
-function textFromContent(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    for (const c of content) {
-      if (
-        c &&
-        typeof c === "object" &&
-        (c as Record<string, unknown>).type === "text"
-      ) {
-        return String((c as Record<string, unknown>).text ?? "");
-      }
-    }
-  }
-  return "";
-}
+// SYSTEM_PREFIXES / isSystemText / textFromContent moved to agent-recall-core
+// (packages/core/src/helpers/transcript-project.ts) alongside resolveSessionProject
+// above — imported at the top of this file, used below unchanged.
 
 /** Find the first meaningful user message — skips hook/system/attachment messages. */
 function extractFirstUserMessage(lines: unknown[]): string | null {

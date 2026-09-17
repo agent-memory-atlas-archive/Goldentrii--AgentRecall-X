@@ -742,6 +742,25 @@ export type {
   HeedAggregate,
 } from "./storage/heed-tiers.js";
 
+// Transcript project resolution (F1, moved from cli/utils/transcript-reader.ts
+// 2026-09-17 — evolution p1a, transcript-audit.ts needs it and core cannot
+// depend on the cli package). packages/cli/src/utils/transcript-reader.ts
+// re-exports resolveSessionProject from here instead of duplicating it.
+export { resolveSessionProject, isSystemText, textFromContent, isBoilerplateRecord, SYSTEM_PREFIXES } from "./helpers/transcript-project.js";
+export type { ProjectCandidate, ResolvedSessionProject } from "./helpers/transcript-project.js";
+
+// Evolution p1a (2026-09-17) — `ar outcomes audit`: transcript-grounded
+// injection-outcome adjudication (recurred/cited/ignored), independent of the
+// measured agent's own session summary.
+export { runTranscriptAudit, defaultClaudeDir } from "./tools-logic/transcript-audit.js";
+export type {
+  TranscriptAuditOptions,
+  TranscriptAuditVerdict,
+  TranscriptAuditAdjudication,
+  TranscriptAuditDaySummary,
+  TranscriptAuditResult,
+} from "./tools-logic/transcript-audit.js";
+
 // Wave 5 — corrections-prediction (north-star) + compression remainder
 export { deriveBlindSpots } from "./helpers/blind-spots.js";
 export type { BlindSpot, BlindSpotProfile } from "./helpers/blind-spots.js";

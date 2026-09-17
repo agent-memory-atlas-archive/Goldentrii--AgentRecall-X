@@ -129,6 +129,11 @@ OUTCOMES (dream-audit verdicts — C3b):
       Record a dream-audit verdict. Evidence string is prefixed "dream-audit:".
       not_triggered is ONLY accepted from this path (enforced). 1/day dedup on audit-date.
       --audit-date defaults to yesterday; pass matching value from audit-candidates retrieved_date.
+  ar outcomes audit --date YYYY-MM-DD | --backfill --since YYYY-MM-DD [--until YYYY-MM-DD]
+      [--project <slug>] [--claude-dir <path>] [--dry-run]
+      Evolution p1a — transcript-grounded verdicts (recurred/cited/ignored), NEVER the
+      agent's own session summary. Evidence prefixed "transcript-audit:"; cited/ignored
+      are ledger-only. Idempotent: re-running the same day writes zero new events.
   ar outcomes --help
       Show detailed help with agent instructions.
 
@@ -3593,10 +3598,31 @@ SUBCOMMANDS:
         - Malformed ledger lines are quarantined (reported, never crash the run).
         - Idempotent: re-running --apply on an already-rebuilt store is a no-op.
 
+  ar outcomes audit --date YYYY-MM-DD [--project <slug>] [--claude-dir <path>] [--dry-run]
+  ar outcomes audit --backfill --since YYYY-MM-DD [--until YYYY-MM-DD] [--project <slug>] [--claude-dir <path>] [--dry-run]
+      Evolution p1a — transcript-grounded verdicts. For each audit day: reads
+      corrections/_outcomes.jsonl for corrections INJECTED that day (kind=retrieved),
+      scans the Claude Code transcript directory (default: same dir ar's own session-card
+      reader uses), maps each transcript to a project via the claim-not-generate namer,
+      and adjudicates each injected correction with a deterministic lexical ladder:
+        RECURRED  — a sentence carries a genuine recurrence marker AND a rule content-word.
+        CITED     — the correction id appears anywhere, or ≥2 unique ≥4-char rule content
+                    words (ALL of them if the rule has fewer than 2) appear in ASSISTANT text.
+        IGNORED   — neither.
+      Adjudication independence: the TRANSCRIPT is the only evidence — the agent's own
+      session summary is never consulted. "recurred" reuses the shared kind (mutates
+      recurrence_count); "cited"/"ignored" are ledger-only (no counter mutation), gated to
+      evidence prefixed "transcript-audit:". Idempotent: re-running the same day against
+      the same transcript set writes zero new events. --dry-run adjudicates without writing.
+      Output: per-day table (projects, injected, cited/ignored/recurred, dedup-skipped,
+      transcripts scanned, days with zero matching transcripts).
+
 agent_instruction: use "audit-candidates" to list unknown-verdict corrections for a date,
   then "record" to write a verdict. Always pass --audit-date matching the retrieved_date
   from audit-candidates output. Quote session evidence in --evidence. Never default to heeded.
-  Use "rebuild" (dry-run first, then --apply) after \`ar doctor\` flags outcomes_ledger_divergence.`);
+  Use "rebuild" (dry-run first, then --apply) after \`ar doctor\` flags outcomes_ledger_divergence.
+  Use "audit" (--dry-run first) to backfill recurred/cited/ignored verdicts straight from
+  transcripts when check-action's online "triggered" channel is dormant.`);
         break;
       }
 
@@ -3831,12 +3857,123 @@ agent_instruction: use "audit-candidates" to list unknown-verdict corrections fo
         break;
       }
 
+      if (sub === "audit") {
+        const auditDateFlag = getFlag("--date", outRest);
+        const backfill = hasFlag("--backfill", outRest);
+        const sinceFlag = getFlag("--since", outRest);
+        const untilFlag = getFlag("--until", outRest);
+        const auditProjectFlag = getFlag("--project", outRest);
+        const claudeDirFlag = getFlag("--claude-dir", outRest);
+        const dryRun = hasFlag("--dry-run", outRest);
+        const asJson = hasFlag("--json", outRest);
+
+        const usage =
+          `Usage: ar outcomes audit --date YYYY-MM-DD [--project <slug>] [--claude-dir <path>] [--dry-run]\n` +
+          `   or: ar outcomes audit --backfill --since YYYY-MM-DD [--until YYYY-MM-DD] [--project <slug>] [--claude-dir <path>] [--dry-run]\n`;
+
+        // Class-not-instance validation: every flag combination this verb
+        // accepts is enumerated below — no silent param discard (an --until
+        // without --backfill, or a --date alongside --backfill, is a caller
+        // mistake that must be REJECTED, never quietly ignored).
+        const missingArgs: string[] = [];
+        if (!auditDateFlag && !backfill) missingArgs.push("--date (or --backfill --since <date>)");
+        if (backfill && !sinceFlag) missingArgs.push("--since <date> (required with --backfill)");
+        if (missingArgs.length > 0) {
+          process.stderr.write(
+            `Error: missing required flags: ${missingArgs.join(", ")}\n${usage}` +
+            `agent_instruction: pass either --date for a single day, or --backfill --since <date> [--until <date>] for a range\n`
+          );
+          process.exitCode = 1;
+          break;
+        }
+        if (auditDateFlag && backfill) {
+          process.stderr.write(
+            `Error: --date and --backfill are mutually exclusive\n${usage}` +
+            `agent_instruction: use --date for a single day OR --backfill --since <date> for a range, not both\n`
+          );
+          process.exitCode = 1;
+          break;
+        }
+        if (untilFlag && !backfill) {
+          process.stderr.write(
+            `Error: --until requires --backfill --since <date>\n${usage}` +
+            `agent_instruction: --until only applies to a --backfill range; drop it for a single --date audit\n`
+          );
+          process.exitCode = 1;
+          break;
+        }
+        const dateFields: Array<[string, string | undefined]> = [
+          ["--date", auditDateFlag],
+          ["--since", sinceFlag],
+          ["--until", untilFlag],
+        ];
+        for (const [flagName, val] of dateFields) {
+          if (val && !/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+            process.stderr.write(
+              `Error: ${flagName} must be YYYY-MM-DD, got: "${val}"\n` +
+              `agent_instruction: use ISO date format YYYY-MM-DD\n`
+            );
+            process.exitCode = 1;
+            break;
+          }
+        }
+        if (process.exitCode) break;
+
+        try {
+          const result = await core.runTranscriptAudit({
+            date: auditDateFlag ?? undefined,
+            since: sinceFlag ?? undefined,
+            until: untilFlag ?? undefined,
+            project: auditProjectFlag ?? undefined,
+            claudeDir: claudeDirFlag ?? undefined,
+            dryRun,
+          });
+
+          if (asJson) {
+            output(result);
+          } else {
+            const lines: string[] = [
+              `ar outcomes audit — claude-dir: ${result.claude_dir}${result.dry_run ? " (DRY-RUN — nothing written)" : ""}`,
+              "",
+              "date        projects  injected  cited  ignored  recurred  dedup  transcripts  no-transcript-projects",
+            ];
+            for (const d of result.days) {
+              lines.push(
+                `${d.date}  ${String(d.projects.length).padStart(8)}  ${String(d.injected).padStart(8)}  ` +
+                `${String(d.cited).padStart(5)}  ${String(d.ignored).padStart(7)}  ${String(d.recurred).padStart(8)}  ` +
+                `${String(d.dedup_skipped).padStart(5)}  ${String(d.transcripts_scanned).padStart(11)}  ` +
+                `${d.projects_without_transcripts.join(",") || "-"}`,
+              );
+            }
+            if (result.transcripts_not_found_days.length > 0) {
+              lines.push("", `transcripts-not-found days: ${result.transcripts_not_found_days.join(", ")}`);
+            }
+            const anyAmbiguous = result.days.flatMap((d) => d.transcripts_ambiguous);
+            if (anyAmbiguous.length > 0) {
+              lines.push(
+                "",
+                `⚠ ambiguous transcripts (no per-line timestamps AND mtime unusable — never guessed, excluded from every day): ${[...new Set(anyAmbiguous)].join(", ")}`,
+              );
+            }
+            outputFenced(lines.join("\n"));
+          }
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          process.stderr.write(
+            `Error running transcript audit: ${msg}\n` +
+            `agent_instruction: verify --date/--since are valid dates and --claude-dir (if passed) exists\n`
+          );
+          process.exitCode = 1;
+        }
+        break;
+      }
+
       // Unknown subcommand
       process.stderr.write(
         `Unknown outcomes subcommand: ${sub}\n` +
-        `Usage: ar outcomes audit-candidates|record|rebuild [...]\n` +
+        `Usage: ar outcomes audit-candidates|record|rebuild|audit [...]\n` +
         `Run: ar outcomes --help\n` +
-        `agent_instruction: use "audit-candidates" to list unknowns, "record" to write a verdict, "rebuild" to recompute counters from the ledger\n`
+        `agent_instruction: use "audit-candidates" to list unknowns, "record" to write a verdict, "rebuild" to recompute counters from the ledger, "audit" for transcript-grounded verdicts\n`
       );
       process.exitCode = 1;
       break;

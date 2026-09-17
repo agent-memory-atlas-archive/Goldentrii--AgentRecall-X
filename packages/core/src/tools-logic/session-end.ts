@@ -137,8 +137,14 @@ export interface SessionEndResult {
  * "same mistake" retained; added violated/violating/violation, "ignored the rule",
  * "didn't follow". The bar for a `recurred` verdict is marker + trigger/topical
  * evidence — widening markers alone does not produce more recurred verdicts.
+ *
+ * Exported (evolution p1a, transcript-audit) — the transcript-audit ladder
+ * needs the RAW regex (not just the whole-text boolean hasGenuineRecurrenceMarker
+ * gives) to test recurrence-marker-hit-AND-topic-co-occurrence on the SAME
+ * sentence. Exporting the regex avoids a second, drift-prone copy of this
+ * pattern living in packages/core/src/tools-logic/transcript-audit.ts.
  */
-const RECURRENCE_MARKER =
+export const RECURRENCE_MARKER =
   /\b(again|recurred|repeated|violat(?:ed|ing|ion)|broke the rule|ignored the rule|didn'?t follow|same mistake)\b/i;
 
 /**
@@ -150,9 +156,27 @@ const RECURRENCE_MARKER =
  * (\binstrument covers instrumented/instrumentation, \bbenchmark covers
  * benchmarking) — recall-safe because a genuine violation admission has no
  * reason to name the instrument.
+ *
+ * Exported for the same reason as RECURRENCE_MARKER above.
  */
-const EVAL_VOCAB_ANCHOR =
+export const EVAL_VOCAB_ANCHOR =
   /\b(rmr|heed[_\s-]?rate|baseline|_outcomes|recurrence[_\s-]?count|verdict[_\s-]?coverage|instrument|predict-loo|benchmark)/i;
+
+/**
+ * Unique, lowercase, ≥4-char content words in a correction's rule text —
+ * \W+-split. Single source for the "topical overlap" word set: session-end's
+ * heeded/recurred/not_violated split below computes matchCount against this
+ * exact set, and transcript-audit's CITED tier (evolution p1a) reuses it
+ * verbatim so the two adjudicators can never silently drift apart on what
+ * counts as a "content word". Pure; exported for direct unit testing.
+ */
+export function ruleContentWords(rule: string): string[] {
+  const words = rule
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((w) => w.length >= 4);
+  return [...new Set(words)];
+}
 
 /**
  * True when the summary contains a recurrence marker in a sentence that is NOT
@@ -391,11 +415,7 @@ export async function sessionEnd(input: SessionEndInput): Promise<SessionEndResu
 
           // Topical-overlap heuristic (weak supplementary source):
           // ≥2 content words (≥4 chars) from the rule appear in the session summary.
-          const ruleWords = c.rule
-            .toLowerCase()
-            .split(/\W+/)
-            .filter((w) => w.length >= 4);
-          const uniqueRuleWords = [...new Set(ruleWords)];
+          const uniqueRuleWords = ruleContentWords(c.rule);
           const matchCount = uniqueRuleWords.filter((w) => summaryLower.includes(w)).length;
           const hasTopicalOverlap = matchCount >= 2;
 

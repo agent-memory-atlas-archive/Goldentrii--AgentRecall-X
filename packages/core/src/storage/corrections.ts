@@ -220,9 +220,23 @@ export interface CorrectionOutcome {
    *
    * Backward-compatibility: old readers that filter on the pre-C3 kind set skip
    * these new kinds without error (confirmed: rmr-report.mjs, activity-feed.ts).
+   *
+   * Evolution p1a (2026-09-17) — transcript-audit ledger-only verdicts:
+   * "cited"   = a day's project transcripts show ≥2 unique ≥4-char rule
+   *             content-words in ASSISTANT text (or the correction id
+   *             literal appears) — the correction's topic was surfaced.
+   * "ignored" = neither cited nor recurred — the correction was injected
+   *             that day but never surfaced in the transcripts.
+   * Both are LEDGER-ONLY (see recordOutcome's early-return) and are
+   * single-producer-gated to evidence starting "transcript-audit:", exactly
+   * like "not_triggered"'s "dream-audit:" gate above. "recurred" from this
+   * same instrument reuses the EXISTING "recurred" kind (counter-mutating,
+   * intended) and is NOT gated — session-end and check-action already
+   * produce "recurred" from other evidence.
    */
   kind: "retrieved" | "heeded" | "recurred" | "predicted" | "predict_hit"
-      | "triggered" | "not_triggered" | "unknown" | "not_violated";
+      | "triggered" | "not_triggered" | "unknown" | "not_violated"
+      | "cited" | "ignored";
   /**
    * SEMANTIC timestamp (ISO) — the day the outcome belongs to. The dream-audit
    * path (C3b) deliberately backdates this to the audited day so day-bucketed
@@ -1550,6 +1564,13 @@ export async function retractCorrection(
  *   string MUST start with "dream-audit:". Any other producer throws. This is
  *   the core-level enforcement of the single-producer contract (the CLI's
  *   `ar outcomes record` is the one caller that adds the prefix).
+ * - `cited` / `ignored` (evolution p1a, transcript-audit) are gated the same
+ *   way: evidence MUST start with "transcript-audit:". Any other producer
+ *   throws. `recurred` produced by this SAME instrument reuses the shared
+ *   "recurred" kind and carries a "transcript-audit:<basename>" evidence
+ *   prefix too, but is NOT gated here — session-end and check-action are
+ *   pre-existing, legitimate "recurred" producers with their own evidence
+ *   shapes.
  */
 export async function recordOutcome(outcome: CorrectionOutcome): Promise<void> {
   // C3b single-producer gate: not_triggered without the dream-audit evidence
@@ -1561,6 +1582,20 @@ export async function recordOutcome(outcome: CorrectionOutcome): Promise<void> {
     throw new Error(
       `recordOutcome: kind "not_triggered" is only producible by the dream-audit path — ` +
       `evidence must start with "dream-audit:". Use \`ar outcomes record --kind not_triggered\` ` +
+      `(it adds the prefix) instead of calling recordOutcome directly.`,
+    );
+  }
+
+  // Evolution p1a single-producer gate: cited/ignored without the
+  // transcript-audit evidence prefix indicates an unauthorized producer —
+  // mirrors the not_triggered gate above exactly.
+  if (
+    (outcome.kind === "cited" || outcome.kind === "ignored") &&
+    !(outcome.evidence ?? "").startsWith("transcript-audit:")
+  ) {
+    throw new Error(
+      `recordOutcome: kind "${outcome.kind}" is only producible by the transcript-audit path — ` +
+      `evidence must start with "transcript-audit:". Use \`ar outcomes audit\` ` +
       `(it adds the prefix) instead of calling recordOutcome directly.`,
     );
   }
@@ -1580,10 +1615,14 @@ export async function recordOutcome(outcome: CorrectionOutcome): Promise<void> {
   // nothing. Early-return after the jsonl append (the authoritative sink):
   // avoids a wasted betaPosterior + atomic rewrite on every check-action call
   // and keeps these hot-path kinds clear of the unlocked-RMW counter race.
+  // Evolution p1a: cited/ignored join this same ledger-only set — neither
+  // touches retrieved_count/heeded_count/recurrence_count/precision.
   if (
     outcome.kind === "triggered" ||
     outcome.kind === "not_triggered" ||
-    outcome.kind === "unknown"
+    outcome.kind === "unknown" ||
+    outcome.kind === "cited" ||
+    outcome.kind === "ignored"
   ) {
     return;
   }

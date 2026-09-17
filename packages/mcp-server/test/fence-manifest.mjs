@@ -150,6 +150,13 @@ export const MANIFEST = [
   { channel: "cli_subaction", id: "outcomes.rebuild", status: "allowlisted", reason: "before/after counter objects (numeric), not prose." },
   { channel: "cli_subaction", id: "outcomes.audit-candidates", status: "fenced", file: "packages/cli/src/index.ts" },
   { channel: "cli_subaction", id: "outcomes.record", status: "allowlisted", reason: "echoes only this call's own just-submitted verdict fields (same-turn trust)." },
+  // Evolution p1a (2026-09-17): the human-table branch calls outputFenced()
+  // (fenceMemory), same as outcomes.audit-candidates above. The --json branch
+  // stays unfenced by the SAME established --json/structured-contract
+  // precedent as awareness.read / mirror --json (see the "P1 fence" comment
+  // at outputFenced()'s own definition) — a documented machine-consumption
+  // contract this file's own tests JSON.parse(), never fenced by design.
+  { channel: "cli_subaction", id: "outcomes.audit", status: "fenced", file: "packages/cli/src/index.ts" },
 
   // ── SDK exports ─────────────────────────────────────────────────────────
   // Discovered surface = every public method of `class AgentRecall` plus
