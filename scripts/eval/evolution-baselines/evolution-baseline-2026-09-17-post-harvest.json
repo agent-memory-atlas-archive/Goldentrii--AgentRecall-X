@@ -1,0 +1,300 @@
+{
+  "schema": "evolution-baseline/v2",
+  "generated_at": "2026-09-17T00:00:00.000Z",
+  "as_of": "2026-09-17",
+  "store_root": "/Users/tongwu/.agent-recall",
+  "window": {
+    "last_4_full_iso_weeks": [
+      {
+        "iso_week": "2026-W34",
+        "start": "2026-08-17",
+        "end": "2026-08-23"
+      },
+      {
+        "iso_week": "2026-W35",
+        "start": "2026-08-24",
+        "end": "2026-08-30"
+      },
+      {
+        "iso_week": "2026-W36",
+        "start": "2026-08-31",
+        "end": "2026-09-06"
+      },
+      {
+        "iso_week": "2026-W37",
+        "start": "2026-09-07",
+        "end": "2026-09-13"
+      }
+    ],
+    "last_28_days": {
+      "start": "2026-08-21",
+      "end": "2026-09-17"
+    }
+  },
+  "metrics": {
+    "corrections_captured_per_week": [
+      {
+        "iso_week": "2026-W34",
+        "start": "2026-08-17",
+        "end": "2026-08-23",
+        "total": 1,
+        "by_provenance": {
+          "none": 0,
+          "told": 1
+        }
+      },
+      {
+        "iso_week": "2026-W35",
+        "start": "2026-08-24",
+        "end": "2026-08-30",
+        "total": 0,
+        "by_provenance": {
+          "none": 0,
+          "told": 0
+        }
+      },
+      {
+        "iso_week": "2026-W36",
+        "start": "2026-08-31",
+        "end": "2026-09-06",
+        "total": 0,
+        "by_provenance": {
+          "none": 0,
+          "told": 0
+        }
+      },
+      {
+        "iso_week": "2026-W37",
+        "start": "2026-09-07",
+        "end": "2026-09-13",
+        "total": 1,
+        "by_provenance": {
+          "none": 0,
+          "told": 1
+        }
+      }
+    ],
+    "outcome_events_per_week": [
+      {
+        "iso_week": "2026-W34",
+        "start": "2026-08-17",
+        "end": "2026-08-23",
+        "total": 98,
+        "by_kind": {
+          "retrieved": 45,
+          "triggered": 0,
+          "heeded": 0,
+          "recurred": 2,
+          "not_violated": 0,
+          "unknown": 9,
+          "not_triggered": 27,
+          "predicted": 5,
+          "predict_hit": 0,
+          "other": 10
+        }
+      },
+      {
+        "iso_week": "2026-W35",
+        "start": "2026-08-24",
+        "end": "2026-08-30",
+        "total": 144,
+        "by_kind": {
+          "retrieved": 73,
+          "triggered": 0,
+          "heeded": 1,
+          "recurred": 2,
+          "not_violated": 0,
+          "unknown": 19,
+          "not_triggered": 45,
+          "predicted": 2,
+          "predict_hit": 0,
+          "other": 2
+        }
+      },
+      {
+        "iso_week": "2026-W36",
+        "start": "2026-08-31",
+        "end": "2026-09-06",
+        "total": 94,
+        "by_kind": {
+          "retrieved": 63,
+          "triggered": 0,
+          "heeded": 3,
+          "recurred": 3,
+          "not_violated": 0,
+          "unknown": 0,
+          "not_triggered": 22,
+          "predicted": 0,
+          "predict_hit": 0,
+          "other": 3
+        }
+      },
+      {
+        "iso_week": "2026-W37",
+        "start": "2026-09-07",
+        "end": "2026-09-13",
+        "total": 116,
+        "by_kind": {
+          "retrieved": 47,
+          "triggered": 0,
+          "heeded": 3,
+          "recurred": 1,
+          "not_violated": 2,
+          "unknown": 16,
+          "not_triggered": 34,
+          "predicted": 1,
+          "predict_hit": 0,
+          "other": 12
+        }
+      }
+    ],
+    "verdict_coverage": {
+      "definition": "share of (project, correction_id) pairs with >=1 'retrieved' event in _outcomes.jsonl (any time, not window-limited) whose LATEST verdict-kind event at/after the first retrieval is NOT 'unknown'. Brief's literal spec — see file docblock for the CHALLENGE re divergence from the codebase's canonical formula.",
+      "kinds_considered_verdict": [
+        "heeded",
+        "not_triggered",
+        "not_violated",
+        "recurred",
+        "unknown"
+      ],
+      "denominator": 34,
+      "numerator": 10,
+      "coverage": 0.2941,
+      "canonical_production_comparison": {
+        "description": "packages/core/src/storage/corrections.ts computeCorrectionKPIs() / scripts/eval/rmr-report.mjs buildVerdictLedger(): presence-based (kinds include heeded|recurred|not_triggered, ANY time, not 'latest'), same event-based denominator population as above for a fair comparison. NOTE: true production also differs by using the retrieved_count FIELD on the correction record as its denominator population instead of a ledger 'retrieved' EVENT — not reproduced here since this script does not cross-reference outcome events against correction records.",
+        "kinds_considered_covering": [
+          "heeded",
+          "not_triggered",
+          "recurred"
+        ],
+        "denominator": 34,
+        "numerator": 28,
+        "coverage": 0.8235
+      }
+    },
+    "distinct_corrections_retrieved_last_28_days": 21,
+    "association_edges": 0,
+    "transcript_audit_events_per_week": [
+      {
+        "iso_week": "2026-W34",
+        "start": "2026-08-17",
+        "end": "2026-08-23",
+        "cited": 4,
+        "ignored": 6,
+        "audit_recurred": 2
+      },
+      {
+        "iso_week": "2026-W35",
+        "start": "2026-08-24",
+        "end": "2026-08-30",
+        "cited": 1,
+        "ignored": 1,
+        "audit_recurred": 2
+      },
+      {
+        "iso_week": "2026-W36",
+        "start": "2026-08-31",
+        "end": "2026-09-06",
+        "cited": 1,
+        "ignored": 2,
+        "audit_recurred": 1
+      },
+      {
+        "iso_week": "2026-W37",
+        "start": "2026-09-07",
+        "end": "2026-09-13",
+        "cited": 6,
+        "ignored": 6,
+        "audit_recurred": 1
+      }
+    ],
+    "injection_precision": {
+      "window": {
+        "start": "2026-08-17",
+        "end": "2026-09-13"
+      },
+      "cited": 12,
+      "ignored": 15,
+      "precision": 0.4444
+    },
+    "implicit_corrections": {
+      "total_by_source": {
+        "transcript-implicit": 1
+      },
+      "per_week": [
+        {
+          "iso_week": "2026-W34",
+          "start": "2026-08-17",
+          "end": "2026-08-23",
+          "by_source": {
+            "transcript-implicit": 0
+          }
+        },
+        {
+          "iso_week": "2026-W35",
+          "start": "2026-08-24",
+          "end": "2026-08-30",
+          "by_source": {
+            "transcript-implicit": 0
+          }
+        },
+        {
+          "iso_week": "2026-W36",
+          "start": "2026-08-31",
+          "end": "2026-09-06",
+          "by_source": {
+            "transcript-implicit": 0
+          }
+        },
+        {
+          "iso_week": "2026-W37",
+          "start": "2026-09-07",
+          "end": "2026-09-13",
+          "by_source": {
+            "transcript-implicit": 0
+          }
+        }
+      ]
+    },
+    "injection_outcome_coverage": {
+      "theoretical": {
+        "numerator": 41,
+        "denominator": 553,
+        "coverage": 0.0741
+      },
+      "achievable": {
+        "numerator": 41,
+        "denominator": 101,
+        "coverage": 0.4059
+      }
+    }
+  },
+  "diagnostics": {
+    "store_projects_dir_exists": true,
+    "projects_scanned": 85,
+    "projects_with_corrections_dir": 27,
+    "projects_without_corrections_dir": 58,
+    "correction_json_files_found": 110,
+    "correction_json_files_parsed_ok": 109,
+    "correction_json_files_corrupt_skipped": 0,
+    "correction_json_files_missing_date_skipped": 1,
+    "outcomes_files_found": 10,
+    "outcomes_files_missing": 17,
+    "outcomes_lines_total": 1633,
+    "outcomes_lines_parsed_ok": 1633,
+    "outcomes_lines_corrupt_skipped": 0,
+    "outcomes_lines_invalid_timestamp_skipped": 0
+  },
+  "schema_notes": {
+    "outcome_kind_universe": "Brief listed 7 kinds (retrieved/triggered/heeded/recurred/not_violated/unknown/not_triggered). The codebase's CorrectionOutcome.kind union (corrections.ts:224-225) has 9: adds 'predicted' and 'predict_hit'. The live store (verified 2026-09-17) contains both in real volume (282 predicted, 4 predict_hit of 1588 total outcome lines). This script tallies all 9 canonical kinds plus a catch-all 'other' bucket for any kind string outside that set.",
+    "verdict_coverage_interpretation": "See metrics.verdict_coverage.definition and canonical_production_comparison. Primary number follows the brief's literal 'latest post-retrieval verdict' wording; the canonical presence-based figure is reported alongside, never silently substituted.",
+    "week_window_definition": "'Last 4 full ISO weeks' = the 4 consecutive Mon-Sun ISO weeks strictly before the (possibly partial) ISO week containing --as-of. The as-of week itself is ALWAYS excluded, regardless of which weekday as-of falls on.",
+    "day_window_definition": "'Last 28 days' = the UTC-calendar-date window [as-of - 27 days, as-of], inclusive on both ends (28 distinct days total). Event day = UTC calendar date of the outcome event's `at` timestamp.",
+    "provenance_grouping": "Grouped by provenance.mode when the correction record has a `provenance` object with a non-empty string `mode`; 'none' when the `provenance` field is absent entirely; 'unspecified' when present but malformed (not an object, or object without a usable `mode` string). Only 8/108 correction records in the live store carry a provenance field as of this baseline (all mode='told').",
+    "association_edges": "Explicit constant 0 — the association-edge ledger does not exist yet in this store version. Not a computed value; recorded as a documented floor for later phases to compare against.",
+    "transcript_audit_events_v2": "(f) cited/ignored/audit_recurred tallied over the SAME last-4-full-ISO-weeks window as (a)/(b). 'audit_recurred' = 'recurred' kind events whose evidence starts with 'transcript-audit:' (the single-producer gate corrections.ts's recordOutcome() enforces for this instrument, see transcript-audit.ts). Ordinary (non-audit) 'recurred' events are UNCHANGED in (b)'s existing 'recurred' bucket — this is an additional cross-cut, not a replacement. cited/ignored are NOT in v1's KNOWN_OUTCOME_KINDS, so they also still land in (b)'s 'other' bucket unchanged — v1 predates these kinds and its behavior is deliberately untouched.",
+    "injection_precision_v2": "(g) injection_precision = cited/(cited+ignored), aggregated over the SAME 4-week window as (f) (sum of the per-week cited/ignored columns) — NOT all-time, since (f) is the only source of cited/ignored counts this script computes. null when cited+ignored===0, never 0.",
+    "implicit_corrections_v2": "(h) 'implicit correction' = a correction record whose provenance.mode === 'observed' exactly (the schema's own pre-existing 'agent inferred, not user-told' semantic — see corrections.ts's CorrectionProvenance doc comment). Grouped by the raw provenance.source string value (class, not instance — covers whatever source tag any current or future implicit-producer uses, with zero code changes). 'unspecified' when mode==='observed' but source is missing/malformed. total_by_source is ALL-TIME (every observed-mode correction ever, any date); per_week is windowed to the SAME last-4-full-ISO-weeks as (a) — the two are deliberately DIFFERENT populations (a correction inside the current partial week counts in the total but appears in no per_week bucket). CHALLENGE/ESCALATION: the evolution worker brief's CONTEXT asserted a 'Phase 1b' had already landed corrections with the literal provenance.source==='transcript-implicit' — verified FALSE at implementation time (2026-09-17): neither `git log --all` on evolution-p0-p4 nor a repo-wide grep for 'transcript-implicit' found any occurrence; only Phase 0 (7ff7af4) and Phase 1a (c59f04d) are merged. This script does not hardcode that literal string for exactly that reason — it is correct today (0 across the live store, since no observed-mode-with-that-source corrections exist) and will pick up 'transcript-implicit' or any other future implicit-producer's source tag automatically the moment one exists.",
+    "injection_outcome_coverage_v2": "(i) share of (project, correction_id, day) pairs with a 'retrieved' event on that day that ALSO have >=1 transcript-audit-evidenced event (cited|ignored|recurred, evidence starting 'transcript-audit:') for that SAME pair. ALL-TIME (not window-limited — audit backfills run over arbitrary history, same population style as (c)/(d)). DUAL DENOMINATORS, always printed together: coverage_theoretical = numerator / |every retrieved-day pair, ever|; coverage_achievable = numerator / |retrieved-day pairs whose DAY has >=1 transcript-audit-evidenced event SOMEWHERE in the store (ANY project, ANY correction)|. ESCALATION (ambiguous per the brief's own wording, documented per its escalation clause): 'achievable' is scoped GLOBALLY across every project/correction rather than per-project — transcript-audit.ts scans the transcript directory ONCE per day across every project in a single run, so 'a day the auditor could see' is a property of the DAY, not of a (day, project) pair. Both coverage numbers are null (never 0) when their own denominator is 0."
+  }
+}
