@@ -290,7 +290,120 @@ regressions, all six protected hits hold; warm p95 ≈150 ms.
 
 ---
 
-## (c) Set-cosine semantic match — `helpers/semantic-match.ts`
+## (c) ACT-R declarative-memory activation — `retrieval/activation.ts`
+
+Evolution p3 (2026-09-17). ACT-R's declarative-memory activation equation,
+restricted to its associative term:
+
+```
+A_i = B_i + Σ_j W_j · S_ji
+```
+
+`B_i` (base activation — recency/frequency) is **never re-derived here**: it
+is whichever per-tier score the caller already computes (journal Ebbinghaus
+`S=2` above, palace salience/IDF, insight confirmation-count, or
+`rankCorrections`' own severity/proof_confidence/recency/proof composite,
+`storage/corrections.ts`). This module reads Phase 2's
+`association/edges.json` (`assoc-edges/v1`, `tools-logic/association.ts`:
+undirected edges `{a, b, weight, first_seen, last_seen}`, `weight` = distinct
+co-activation SESSIONS) and computes ONLY the associative bonus `Σ_j W_j·S_ji`:
+
+```
+S_ji = weight · exp( -days(asOfDay − last_seen) / S_DECAY )   // assocStrength()
+  S_DECAY = 30 days                                            // HAND-TUNED
+
+activationBonus(i) = Σ_j (1/|context|) · S_ji                  // activationBonus()
+  over context items j WITH an edge to i (no edge -> 0 for that j)
+  W_j = 1/|context|  (uniform — every context item weighted equally)
+```
+
+Same exponential-decay SHAPE as (a)'s FSRS `R = exp(-t/S)` and (b)'s
+Ebbinghaus `R(t) = exp(-t/S)` — this module reuses the established
+"exponential forgetting" primitive rather than inventing a fourth decay
+curve, applied here to associative STRENGTH between two memories instead of
+a single memory's own retrievability.
+
+### Integration (flag-gated `AGENT_RECALL_ACTIVATION=1`, default OFF)
+
+Two call sites, both following the fix7 semantic-leg template (flag off ⇒
+zero file read, byte-identical output):
+
+```
+(a) session_start correction ordering — activationTieBreak()
+    A TIE-BREAK, inserted into rankCorrections' priority chain strictly
+    AFTER severity and proof_confidence (ahead of recency/proof_count):
+    items are grouped into contiguous (severity, proof_confidence) tie-
+    classes; activation only reorders WITHIN a class, never across one.
+    GREEDY: context starts empty and grows by one node id per pick (the
+    Nth pick's activation score already "sees" picks 1..N-1).
+
+(b) smart_recall post-RRF re-rank — applyActivationRerank()
+    final_score = fused_score · (1 + ACT_ALPHA · normalized_activation)
+      ACT_ALPHA = 0.2                                           // HAND-TUNED
+      normalized_activation = raw_bonus / (raw_bonus + 1)       // squash to [0,1)
+    Context = top-3 node ids BY FUSED SCORE (static, not greedy — the
+    fixed context this integration point specifies, independent of (a)'s).
+```
+
+### The dimensional-coherence CHALLENGE, resolved explicitly
+
+(a) never sums activation with `B_i` — it only compares two
+`activationBonus` values against EACH OTHER inside one tie-class, so no
+cross-scale arithmetic ever happens there. (b) DOES combine two
+incompatible scales: `fused_score` lives on the RRF `1/(60+r)` scale (§b
+above); raw `S_ji` lives on an unrelated `weight · exp(...)` scale (roughly
+an integer session-count, decayed). Summing them directly would be exactly
+the "Fix 1: incompatible scales" defect §b's own header names for the old
+linear-fusion bug. The fix here is the `x/(x+1)` squash above: it maps ANY
+non-negative raw bonus into `[0,1)` — bounded regardless of how large a raw
+edge weight gets, requires no corpus-wide "max possible" scan (keeps the
+math simple and deterministic, per the brief), and is exactly 0 when the raw
+bonus is 0 (zero signal ⇒ multiplier ⇒ ×1, an exact no-op, never mutating a
+score that had no activation evidence).
+
+### Honest label: **HAND-TUNED**
+
+The functional FORM is a direct, correct restatement of ACT-R's associative
+activation term (Anderson & Lebiere) — principled, and structurally
+identical to the exponential-decay shape already GROUNDED elsewhere in this
+file. **The constants are not fit to any recall/forget outcome:**
+- `S_DECAY = 30` — chosen by feel (a month-ish co-activation memory), the
+  same "policy knob, not measured quantity" caveat (a)'s FSRS constants
+  carry.
+- `ACT_ALPHA = 0.2` — chosen so the multiplicative boost can move a tied
+  item by at most ×1.2, deliberately bounded well under the ~×1.02
+  threshold §b's own header identifies as the point an unbounded multiplier
+  starts vaulting off-topic items over on-topic ones (the exact defect the
+  hot-window boost's removal fixed) — a conservative choice, not a fit one.
+
+Counterfactual offline measurement: `scripts/eval/activation-eval.mjs` (a
+strict temporal-split re-derivation of the graph per audit day, so a
+same-day `cited` event can never leak into that day's own evidence) —
+CLAIM-GATE disciplined (n≥20 evaluable (project,day) pairs AND ≥5 evaluable
+days, else prints `CANNOT CLAIM` literally, never a synthesized number). On
+the live `~/.agent-recall` store (2026-09-17): **zero `cited` events exist
+anywhere in the corpus yet** (Phase 1a's transcript-audit has not produced
+any), so the honest result is `CANNOT CLAIM (n=0 evaluable pairs < gate
+20)` — see the evolution p3 worker report for the full run transcript
+(fixture run included, gate passing on a controlled fixture: MRR
+0.25→0.333, hit@3 0→1, n=21, days=7).
+
+### Hopfield: still explicitly NOT wired in (see (b) above for the primitive itself)
+
+`palace/hopfield.ts`'s dense associative memory (softmax attention over a
+FULL similarity matrix, Ramsauer et al. 2020) is not the right primitive for
+`assoc-edges/v1`'s graph: that graph is SPARSE by construction (an edge
+exists only between corrections that were actually co-cited; most pairs in
+a real store have none). Feeding a mostly-zero adjacency matrix into
+Hopfield's exponential-capacity softmax would spend its energy attending to
+a near-uniform distribution over non-edges — not the density regime its
+capacity argument assumes. The linear ACT-R sum this module implements is
+the correct primitive for a sparse co-activation graph; Hopfield remains a
+documented, not-wired-in primitive (unchanged from (b)'s own note).
+
+---
+
+## (d) Set-cosine semantic match — `helpers/semantic-match.ts`
 
 The local, zero-key, zero-network similarity added in Loop 5.
 
@@ -343,7 +456,7 @@ and false-positive rate.
 
 ---
 
-## (d) THE BIG HONEST QUESTION
+## (e) THE BIG HONEST QUESTION
 
 > *"Redundancy over time reconstructs intent."* Is there a real mathematical
 > model behind this, or is it aspirational?
@@ -362,7 +475,7 @@ What actually runs when corrections accumulate (`helpers/blind-spots.ts` →
    members.
 2. **FSRS reinforcement** (§a) layered on top = exponential decay + additive
    confirmation growth.
-3. **Set-cosine matching** (§c) decides whether a new situation fires a blind
+3. **Set-cosine matching** (§d) decides whether a new situation fires a blind
    spot.
 
 So the entire stack reduces to: **frequency-counting (clustering) + exponential
@@ -420,7 +533,7 @@ A model that would *earn* the phrase "redundancy reconstructs intent":
   instrument Loop 10 can build against — replacing the frequency tally with a
   shrinking-variance estimator and proving the SNR/accuracy curve rises.
 
-Until that exists, the honest one-liner for §d is:
+Until that exists, the honest one-liner for §e is:
 
 > **Present math: clustering + decay + set-cosine. Claimed behavior (intent
 > reconstruction): aspirational.**

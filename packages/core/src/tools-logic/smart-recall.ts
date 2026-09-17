@@ -118,6 +118,7 @@ import { resolveProject } from "../storage/project.js";
 import { withLock, LockContentionError } from "../storage/filelock.js";
 import { queryMemory, queryArchiveFallback, type QueryMemoryItem } from "../retrieval/query-memory.js";
 import type { SemanticLegNote } from "../retrieval/semantic-leg.js";
+import { activationEnabled, applyActivationRerank, type ActivationLegNote } from "../retrieval/activation.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -361,6 +362,16 @@ export interface SmartRecallResult {
    * error on the recall path.
    */
   semantic_leg?: SemanticLegNote;
+  /**
+   * Evolution p3 (2026-09-17) — activation re-rank diagnostics, same
+   * never-an-error/always-diagnosable shape family as `semantic_leg`. ONLY
+   * present when `AGENT_RECALL_ACTIVATION=1` was on for this call — absent
+   * otherwise, keeping flag-off output byte-identical (same convention as
+   * `recall_path`/`semantic_leg`). `used: false` (with a `reason`) covers
+   * both "no association/edges.json yet" and "graph present but no edges
+   * among the top candidates" — either way `results` is untouched.
+   */
+  activation_leg?: ActivationLegNote;
 }
 
 // ---------------------------------------------------------------------------
@@ -1033,6 +1044,16 @@ export async function smartRecall(input: SmartRecallInput): Promise<SmartRecallR
   // Re-sort after feedback adjustment
   results.sort((a, b) => b.score - a.score);
 
+  // ── Activation re-rank (evolution p3, AGENT_RECALL_ACTIVATION=1, default OFF) ──
+  // Flag check short-circuits BEFORE any file read (`applyActivationRerank`
+  // internally calls `loadAssocGraph`) — flag-off never touches `results`
+  // and never computes `activationLegNote`, so the return object below omits
+  // `activation_leg` entirely (byte-identical to pre-p3 output).
+  let activationLegNote: ActivationLegNote | undefined;
+  if (activationEnabled()) {
+    activationLegNote = applyActivationRerank(results, resolvedProject, { storeRoot: getRoot() });
+  }
+
   const finalResults = results.slice(0, limit);
 
   // ── BRIDGE: low-confidence top hits drill down to the lossless archive ──────
@@ -1143,6 +1164,7 @@ export async function smartRecall(input: SmartRecallInput): Promise<SmartRecallR
     ...(degraded ? { degraded } : {}),
     ...(recallPath ? { recall_path: recallPath } : {}),
     ...(semanticLegNote ? { semantic_leg: semanticLegNote } : {}),
+    ...(activationLegNote ? { activation_leg: activationLegNote } : {}),
     ...(bridged ? { bridged } : {}),
     ...(finalResults.length === 0
       ? { guidance: "No results found. Try `session_start` to initialize this project, or `bootstrap_scan` to import existing context." }

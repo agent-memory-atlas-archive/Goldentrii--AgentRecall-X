@@ -178,14 +178,27 @@ export function assocEdgeKey(a: string, b: string): string {
 // (read whole file, split lines, quarantine malformed rows, never throw).
 // ---------------------------------------------------------------------------
 
-interface CitedEventRaw {
+/**
+ * Exported for Phase 3 (activation.ts / scripts/eval/activation-eval.mjs):
+ * the STRICT TEMPORAL SPLIT counterfactual eval needs the raw per-project
+ * `cited` events (BEFORE grouping) so it can filter them to `day < D` and
+ * re-derive day D's graph in-memory via `buildAssociationGraphFromEvents`
+ * below — reusing this exact ledger-parsing contract rather than forking a
+ * second reader.
+ */
+export interface CitedEventRaw {
   correction_id: string;
   at: string;
   evidence?: string;
   session_id?: string;
 }
 
-function readCitedEvents(
+/**
+ * Read + quarantine-parse one project's `cited` events. Exported (see
+ * `CitedEventRaw`'s doc comment) — Phase 3 calls this directly instead of
+ * re-implementing the malformed-line quarantine idiom.
+ */
+export function readCitedEvents(
   storeRoot: string,
   project: string,
 ): { events: CitedEventRaw[]; malformed: Array<{ line: number; error: string }> } {
@@ -284,20 +297,36 @@ function listProjectDirs(storeRoot: string): string[] {
 }
 
 /**
- * Pure graph derivation from every project's `_outcomes.jsonl` under
- * `storeRoot`. No filesystem writes — `runAssocRebuild` below is the only
- * writer, and only when not in --dry-run.
+ * Pure graph derivation from an ALREADY-READ map of `project -> cited
+ * events` — no filesystem access at all. Extracted (Phase 3, unchanged
+ * behavior) from what used to be `buildAssociationGraph`'s single
+ * disk-coupled loop, so the STRICT TEMPORAL SPLIT counterfactual eval
+ * (`scripts/eval/activation-eval.mjs`) can re-derive day D's graph
+ * in-memory from a `day < D`-filtered event set WITHOUT forking this
+ * grouping/weighting logic — every rule documented in this module's header
+ * (co-activation ladder, project-scoped isolation, weight = distinct
+ * co-activation GROUPS not raw events) applies identically here.
+ *
+ * DETERMINISM: `eventsByProject`'s own Map key (insertion) order does NOT
+ * affect the result — project keys are re-sorted here, exactly as
+ * `listProjectDirs` already sorts on disk, so a caller building this Map in
+ * any order gets the same byte-identical `file` output as
+ * `buildAssociationGraph`'s disk-scan path for the same underlying events.
+ * `malformedRows` here carries ONLY the "unparseable `at` timestamp" class
+ * (line: -1) — ledger-line JSON-parse/shape errors are a read-time concern
+ * already handled by `readCitedEvents` before this function ever sees an
+ * event.
  */
-export function buildAssociationGraph(storeRoot: string): AssocGraphBuild {
-  const projects = listProjectDirs(storeRoot);
+export function buildAssociationGraphFromEvents(
+  eventsByProject: ReadonlyMap<string, readonly CitedEventRaw[]>,
+): { file: AssocEdgesFile; malformedRows: AssocMalformedRow[] } {
   const groups = new Map<string, CoActivationGroup>();
   const malformedRows: AssocMalformedRow[] = [];
   let builtFromEvents = 0;
 
+  const projects = [...eventsByProject.keys()].sort();
   for (const project of projects) {
-    const { events, malformed } = readCitedEvents(storeRoot, project);
-    for (const m of malformed) malformedRows.push({ project, ...m });
-
+    const events = eventsByProject.get(project) ?? [];
     for (const evt of events) {
       const day = dayOf(evt.at);
       if (!day) {
@@ -382,6 +411,38 @@ export function buildAssociationGraph(storeRoot: string): AssocGraphBuild {
     edges,
   };
 
+  return { file, malformedRows };
+}
+
+/**
+ * Pure graph derivation from every project's `_outcomes.jsonl` under
+ * `storeRoot`. No filesystem writes — `runAssocRebuild` below is the only
+ * writer, and only when not in --dry-run.
+ *
+ * Thin disk-reading wrapper around `buildAssociationGraphFromEvents` (Phase
+ * 3 extraction) — reads every project's raw events once, then hands them to
+ * the pure derivation above. Output is byte-identical to the pre-extraction
+ * single-loop implementation (same events, same per-project iteration
+ * order, same grouping keys); only `malformedRows`' CROSS-PROJECT
+ * interleaving order can differ (all per-ledger read-errors now precede all
+ * per-event day-errors, instead of being interleaved project-by-project) —
+ * no test or caller depends on that interleaving (only on per-project
+ * content/count), so this is not a behavior change.
+ */
+export function buildAssociationGraph(storeRoot: string): AssocGraphBuild {
+  const projects = listProjectDirs(storeRoot);
+  const malformedRows: AssocMalformedRow[] = [];
+  const eventsByProject = new Map<string, CitedEventRaw[]>();
+
+  for (const project of projects) {
+    const { events, malformed } = readCitedEvents(storeRoot, project);
+    for (const m of malformed) malformedRows.push({ project, ...m });
+    eventsByProject.set(project, events);
+  }
+
+  const { file, malformedRows: dayErrors } = buildAssociationGraphFromEvents(eventsByProject);
+  malformedRows.push(...dayErrors);
+
   return { file, malformedRows, projectsScanned: projects.length };
 }
 
@@ -464,7 +525,12 @@ export function emptyAssocEdgesFile(): AssocEdgesFile {
   };
 }
 
-function isAssocEdgesFile(v: unknown): v is AssocEdgesFile {
+/**
+ * Shape guard for a parsed `edges.json`. Exported for Phase 3's
+ * `activation.ts::loadAssocGraph` — reused (not re-forked) so "corrupt
+ * shape" means the exact same thing in both places.
+ */
+export function isAssocEdgesFile(v: unknown): v is AssocEdgesFile {
   if (!v || typeof v !== "object") return false;
   const f = v as Record<string, unknown>;
   return f.schema === "assoc-edges/v1" && Array.isArray(f.edges);

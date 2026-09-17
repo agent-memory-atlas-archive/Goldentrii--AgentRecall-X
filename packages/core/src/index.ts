@@ -790,9 +790,12 @@ export {
   runAssocRebuild,
   runAssocStats,
   buildAssociationGraph,
+  buildAssociationGraphFromEvents,
+  readCitedEvents,
   computeAssocStats,
   computeDegenerateReason,
   readAssocEdgesFile,
+  isAssocEdgesFile,
   emptyAssocEdgesFile,
   sortAssocEdges,
   assocNodeId,
@@ -816,7 +819,31 @@ export type {
   AssocStatsTopEdge,
   AssocDegreeDistribution,
   AssocGraphBuild,
+  CitedEventRaw,
 } from "./tools-logic/association.js";
+
+// Evolution p3 (2026-09-17) — ACT-R declarative-memory activation
+// (A_i = B_i + Σ_j W_j·S_ji), reading Phase 2's association/edges.json.
+// Flag-gated (AGENT_RECALL_ACTIVATION=1, default OFF) at every call site —
+// see activation.ts's own header for the degradation/flag-off contract.
+export {
+  ACTIVATION_FLAG_ENV,
+  activationEnabled,
+  S_DECAY,
+  ACT_ALPHA,
+  loadAssocGraph,
+  adjacencyFromEdgesFile,
+  assocStrength,
+  activationBonus,
+  activationTieBreak,
+  applyActivationRerank,
+  todayDayString,
+} from "./retrieval/activation.js";
+export type {
+  AssocGraph,
+  ActivationLegNote,
+  ActivationTieBreakOptions,
+} from "./retrieval/activation.js";
 
 // Wave 5 — corrections-prediction (north-star) + compression remainder
 export { deriveBlindSpots } from "./helpers/blind-spots.js";

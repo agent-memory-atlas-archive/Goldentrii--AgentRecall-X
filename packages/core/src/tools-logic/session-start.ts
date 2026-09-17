@@ -9,7 +9,7 @@ import { resolveProject, isValidProjectSlug } from "../storage/project.js";
 import { resetOwnedFiles, getSessionId, claimSessionStartOnce } from "../storage/session.js";
 import { recordLifecycleEvent } from "../storage/lifecycle-telemetry.js";
 import { ensurePalaceInitialized, listRooms, isRoomStale, countRoomEntries } from "../palace/rooms.js";
-import { DEFAULT_PALACE_ROOMS } from "../types.js";
+import { DEFAULT_PALACE_ROOMS, getRoot } from "../types.js";
 import { readIdentity } from "../palace/identity.js";
 import { readAwarenessState, fetchDashboardArchivedTitles } from "../palace/awareness.js";
 import { recallInsights, readInsightsIndex } from "../palace/insights-index.js";
@@ -18,6 +18,7 @@ import { extractSection } from "../helpers/sections.js";
 import { todayISO, truncateUtf8Bytes } from "../storage/fs-utils.js";
 import { readAlignmentLog, extractWatchPatterns, computeDecisionCalibration, type WatchForPattern } from "../helpers/alignment-patterns.js";
 import { readCorrections, readActiveCorrections, readP0Corrections, recordOutcome, getCorrectionKPIs, rankCorrections, type CorrectionRecord } from "../storage/corrections.js";
+import { activationEnabled, activationTieBreak, loadAssocGraph, todayDayString } from "../retrieval/activation.js";
 import { listPendingCorrections } from "../storage/pending.js";
 import { readBlindSpots } from "../storage/blind-spots-store.js";
 import { predictCorrection } from "./predict-correction.js";
@@ -975,7 +976,22 @@ export async function sessionStart(input: SessionStartInput): Promise<SessionSta
   // not just this one, and is out of scope for this project-scoped fix.)
   const allCorrectionsOnce = readCorrections(slug);
   const activeCorrectionsOnce = readActiveCorrections(slug, allCorrectionsOnce);
-  const rawCorrections = rankCorrections(readP0Corrections(slug, allCorrectionsOnce), 10);
+  const severityRanked = rankCorrections(readP0Corrections(slug, allCorrectionsOnce), 10);
+  // Evolution p3 (AGENT_RECALL_ACTIVATION=1, default OFF): activation
+  // TIE-BREAK applied strictly AFTER rankCorrections' own severity/
+  // proof_confidence keys (see activation.ts::activationTieBreak's own doc
+  // comment) — never touches WHICH corrections survive (applyCorrectionBudget
+  // below is unchanged and still receives every item, just possibly
+  // reordered). The `activationEnabled()` check short-circuits BEFORE
+  // `loadAssocGraph` so flag-off performs ZERO file reads and returns
+  // `severityRanked` completely untouched — byte-identical to pre-p3.
+  const rawCorrections = activationEnabled()
+    ? activationTieBreak(severityRanked, {
+        project: slug,
+        graph: loadAssocGraph(getRoot()),
+        asOfDay: todayDayString(),
+      })
+    : severityRanked;
 
   // P0-B: auto-record "retrieved" outcome for each surfaced correction.
   // Automaticity Law: only automatic instrumentation captures real data.
