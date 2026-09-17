@@ -1,0 +1,8 @@
+{
+  "id": "imp4",
+  "date": "2026-09-16",
+  "project": "proj-v2",
+  "rule": "fixture implicit correction imp4 — provenance.source=transcript-implicit, mode=observed, but falls in the CURRENT PARTIAL ISO week (W38) — must be EXCLUDED from per_week but INCLUDED in the all-time total_by_source, proving total != sum(per_week)",
+  "kind": "correction",
+  "provenance": { "source": "transcript-implicit", "mode": "observed" }
+}

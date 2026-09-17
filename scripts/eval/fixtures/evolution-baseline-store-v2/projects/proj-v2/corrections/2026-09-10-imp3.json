@@ -1,0 +1,8 @@
+{
+  "id": "imp3",
+  "date": "2026-09-10",
+  "project": "proj-v2",
+  "rule": "fixture implicit correction imp3 — DIFFERENT source (dream-implicit-audit), mode=observed, falls in W37 — proves grouping is keyed by the raw provenance.source string (class-not-instance), not a single hardcoded value",
+  "kind": "correction",
+  "provenance": { "source": "dream-implicit-audit", "mode": "observed" }
+}

@@ -1,0 +1,7 @@
+{
+  "id": "cD",
+  "date": "2026-08-26",
+  "project": "proj-v2",
+  "rule": "fixture correction cD — retrieved once (2026-08-26), same day as cA's audited ignored event, but cD itself gets NO audit event that day — achievable-denominator-includes-but-uncovered gap test",
+  "kind": "correction"
+}

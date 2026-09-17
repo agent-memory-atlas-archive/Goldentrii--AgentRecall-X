@@ -1,0 +1,8 @@
+{
+  "id": "imp1",
+  "date": "2026-08-18",
+  "project": "proj-v2",
+  "rule": "fixture implicit correction imp1 — provenance.source=transcript-implicit, mode=observed, falls in W34",
+  "kind": "correction",
+  "provenance": { "source": "transcript-implicit", "mode": "observed" }
+}

@@ -1,0 +1,7 @@
+{
+  "id": "cC",
+  "date": "2026-08-25",
+  "project": "proj-v2",
+  "rule": "fixture correction cC — retrieved once (2026-08-25) on a day with ZERO transcript-audit events anywhere in the store — theoretical-vs-achievable divergence test (excluded from achievable denominator)",
+  "kind": "correction"
+}

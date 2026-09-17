@@ -35,6 +35,16 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.join(HERE, "evolution-baseline.mjs");
 const FIXTURE_STORE = path.join(HERE, "fixtures", "evolution-baseline-store");
+// evolution p1c (v2): a SEPARATE fixture store, deliberately not merged into
+// FIXTURE_STORE above — extending the v1 fixture's existing files/lines would
+// perturb its own hand-computed diagnostics counts (projects_scanned,
+// outcomes_lines_total, etc.) and the "other" bucket in outcome_events_per_week
+// (cited/ignored/audit-recurred are NOT in v1's KNOWN_OUTCOME_KINDS, so any new
+// such line landing in the v1 fixture's existing 4-week window would silently
+// change the "other" tally the v1 test already asserts exact numbers for).
+// Keeping v2 signals in their own store makes "v1 fixture untouched" a
+// filesystem fact, not just a hoped-for invariant.
+const FIXTURE_STORE_V2 = path.join(HERE, "fixtures", "evolution-baseline-store-v2");
 const AS_OF = "2026-09-17";
 
 // ---------------------------------------------------------------------------
@@ -205,4 +215,159 @@ test("computeBaseline output has stable key order across repeated calls", () => 
   const r1 = computeBaseline({ storeRoot: FIXTURE_STORE, asOf: AS_OF });
   const r2 = computeBaseline({ storeRoot: FIXTURE_STORE, asOf: AS_OF });
   assert.equal(JSON.stringify(r1), JSON.stringify(r2));
+});
+
+// ===========================================================================
+// evolution p1c — schema evolution-baseline/v2 (additive):
+//   (f) cited/ignored/audit-recurred events per week (same 4-week window)
+//   (g) injection_precision = cited/(cited+ignored), null when denom 0
+//   (h) implicit-correction counts (provenance.mode === "observed"), total
+//       (all-time) and per-week, keyed by provenance.source
+//   (i) injection-outcome coverage, dual denominators (theoretical/achievable)
+// ===========================================================================
+
+test("schema bumps to evolution-baseline/v2", () => {
+  assert.equal(SCHEMA_VERSION, "evolution-baseline/v2");
+});
+
+// ---------------------------------------------------------------------------
+// v1 fixture (UNTOUCHED — see FIXTURE_STORE_V2 comment above) must still
+// produce well-formed v2 fields: zero counts / null ratios, never a crash.
+// This is the "byte-identical for a store with no v2 signals" proof the
+// brief's CHALLENGE clause asks for, applied to the additive (non-refactor)
+// fields — every v1 metric value asserted in the test above is unchanged
+// (same computeBaseline() call, same fixture bytes, same numbers), and the
+// new v2 fields degrade to their documented "uncomputable" defaults.
+// ---------------------------------------------------------------------------
+
+test("v2 fields on the v1 (no v2 signals) fixture: all-zero / null, never crash", () => {
+  const result = computeBaseline({ storeRoot: FIXTURE_STORE, asOf: AS_OF });
+
+  for (const w of result.metrics.transcript_audit_events_per_week) {
+    assert.equal(w.cited, 0);
+    assert.equal(w.ignored, 0);
+    assert.equal(w.audit_recurred, 0);
+  }
+  assert.equal(result.metrics.injection_precision.cited, 0);
+  assert.equal(result.metrics.injection_precision.ignored, 0);
+  assert.equal(result.metrics.injection_precision.precision, null); // denom 0 -> null, never 0
+
+  // NOTE: the v1 fixture's c3 (2026-09-10, W37) DOES carry
+  // provenance={source:"session-id-xyz",mode:"observed"} (see the (a)
+  // hand-computed comment above) — that's a real "no v2 CODE changed
+  // behavior" signal, not a v2-only fixture concern. (h)'s definition
+  // (mode==="observed") picks it up correctly, proving (h) is not
+  // accidentally gated on any v2-only fixture data.
+  assert.deepEqual(result.metrics.implicit_corrections.total_by_source, { "session-id-xyz": 1 });
+  assert.deepEqual(
+    result.metrics.implicit_corrections.per_week.map((w) => w.by_source),
+    [{ "session-id-xyz": 0 }, { "session-id-xyz": 0 }, { "session-id-xyz": 0 }, { "session-id-xyz": 1 }],
+  );
+
+  assert.equal(result.metrics.injection_outcome_coverage.theoretical.denominator, 5);
+  assert.equal(result.metrics.injection_outcome_coverage.theoretical.numerator, 0);
+  assert.equal(result.metrics.injection_outcome_coverage.theoretical.coverage, 0);
+  assert.equal(result.metrics.injection_outcome_coverage.achievable.denominator, 0);
+  assert.equal(result.metrics.injection_outcome_coverage.achievable.numerator, 0);
+  assert.equal(result.metrics.injection_outcome_coverage.achievable.coverage, null); // denom 0 -> null, never 0
+});
+
+// ---------------------------------------------------------------------------
+// Fixture end-to-end (v2 signals): every new metric family against
+// hand-computed values. Store: fixtures/evolution-baseline-store-v2/
+// (single project "proj-v2"). Walked through in the worker report, not
+// re-derived from the script under test.
+// ---------------------------------------------------------------------------
+
+test("computeBaseline on the v2-signal fixture matches hand-computed values for (f)/(g)/(h)/(i)", () => {
+  const result = computeBaseline({ storeRoot: FIXTURE_STORE_V2, asOf: AS_OF });
+
+  // (f) transcript-audit events per week — W34..W37.
+  // D1=08-18(W34) cA cited; D2=08-19(W34) cB audit-recurred;
+  // D4=08-26(W35) cA ignored; D5=09-05(W36) cA PLAIN recurred (evidence
+  // "session-end:..." — NOT "transcript-audit:" prefixed) must NOT count.
+  const f = result.metrics.transcript_audit_events_per_week;
+  assert.deepEqual(
+    f.map((w) => [w.cited, w.ignored, w.audit_recurred]),
+    [
+      [1, 0, 1], // W34: cA cited (D1) + cB audit-recurred (D2)
+      [0, 1, 0], // W35: cA ignored (D4)
+      [0, 0, 0], // W36: cA's D5 recurred is plain, excluded
+      [0, 0, 0], // W37: nothing
+    ],
+  );
+
+  // (g) injection_precision = cited/(cited+ignored) over the SAME 4-week
+  // window as (f): cited=1 (D1), ignored=1 (D4) -> 1/2 = 0.5.
+  const g = result.metrics.injection_precision;
+  assert.equal(g.cited, 1);
+  assert.equal(g.ignored, 1);
+  assert.equal(g.precision, 0.5);
+
+  // (h) implicit corrections (provenance.mode === "observed"), keyed by
+  // provenance.source. imp1(08-18,W34,transcript-implicit) imp2(08-27,W35,
+  // transcript-implicit) imp3(09-10,W37,dream-implicit-audit)
+  // imp4(09-16,W38 CURRENT PARTIAL, transcript-implicit) — excluded from
+  // per_week, included in the all-time total. told1(mode=told) and
+  // c-no-prov(no provenance) are negative cases, excluded entirely.
+  const h = result.metrics.implicit_corrections;
+  assert.deepEqual(h.total_by_source, { "dream-implicit-audit": 1, "transcript-implicit": 3 });
+  assert.deepEqual(
+    h.per_week.map((w) => w.by_source),
+    [
+      { "dream-implicit-audit": 0, "transcript-implicit": 1 }, // W34: imp1
+      { "dream-implicit-audit": 0, "transcript-implicit": 1 }, // W35: imp2
+      { "dream-implicit-audit": 0, "transcript-implicit": 0 }, // W36: nothing
+      { "dream-implicit-audit": 1, "transcript-implicit": 0 }, // W37: imp3
+    ],
+  );
+  // total (3) != sum of the windowed per_week transcript-implicit column (2)
+  // -- imp4 falls in the excluded current-partial week but still counts
+  // toward the all-time total. Proves total is NOT window-limited.
+  const perWeekTranscriptImplicitSum = h.per_week.reduce((a, w) => a + w.by_source["transcript-implicit"], 0);
+  assert.equal(h.total_by_source["transcript-implicit"], 3);
+  assert.equal(perWeekTranscriptImplicitSum, 2);
+  assert.notEqual(h.total_by_source["transcript-implicit"], perWeekTranscriptImplicitSum);
+
+  // (i) injection-outcome coverage, ALL-TIME (not window-limited), dual
+  // denominators. retrievedPairs = {cA/D1, cB/D2, cC/D3, cA/D4, cD/D4} = 5.
+  //   cA/D1 -> covered (cited D1)          cB/D2 -> covered (audit-recurred D2)
+  //   cC/D3 -> NOT covered, D3 has ZERO transcript-audit evidence anywhere
+  //           (proj-v2 or otherwise) -> excluded from ACHIEVABLE denominator
+  //   cA/D4 -> covered (ignored D4)         cD/D4 -> NOT covered, but D4 IS
+  //           globally audited (via cA's ignored event) -> INCLUDED in
+  //           achievable denominator as a real, uncovered gap.
+  // theoretical = 3/5 = 0.6.  achievable = 3/4 = 0.75 (cC/D3 dropped from
+  // the denominator; numerator unchanged since every covered pair's day is
+  // trivially globally-audited by construction).
+  const i = result.metrics.injection_outcome_coverage;
+  assert.equal(i.theoretical.denominator, 5);
+  assert.equal(i.theoretical.numerator, 3);
+  assert.equal(i.theoretical.coverage, 0.6);
+  assert.equal(i.achievable.denominator, 4);
+  assert.equal(i.achievable.numerator, 3);
+  assert.equal(i.achievable.coverage, 0.75);
+  // Achievable is strictly the more generous number here (excludes an
+  // unauditable day) — proves the two denominators are NOT aliases.
+  assert.notEqual(i.theoretical.coverage, i.achievable.coverage);
+  assert.ok(i.achievable.coverage > i.theoretical.coverage);
+});
+
+// ---------------------------------------------------------------------------
+// Determinism on the v2-signal fixture too (constraint 3): two consecutive
+// CLI runs must produce a byte-identical artifact.
+// ---------------------------------------------------------------------------
+
+test("CLI: two consecutive runs against the v2-signal fixture store are byte-identical", (t) => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "evolution-baseline-v2-determinism-"));
+  t.after(() => fs.rmSync(tmpDir, { recursive: true, force: true }));
+
+  const out1 = path.join(tmpDir, "run1.json");
+  const out2 = path.join(tmpDir, "run2.json");
+  execFileSync("node", [SCRIPT, "--store", FIXTURE_STORE_V2, "--as-of", AS_OF, "--out", out1, "--quiet"]);
+  execFileSync("node", [SCRIPT, "--store", FIXTURE_STORE_V2, "--as-of", AS_OF, "--out", out2, "--quiet"]);
+
+  const buf1 = fs.readFileSync(out1);
+  const buf2 = fs.readFileSync(out2);
+  assert.ok(buf1.equals(buf2), "artifact bytes differ between two consecutive runs (v2-signal fixture)");
 });

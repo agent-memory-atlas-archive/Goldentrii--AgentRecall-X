@@ -1,0 +1,7 @@
+{
+  "id": "cB",
+  "date": "2026-08-19",
+  "project": "proj-v2",
+  "rule": "fixture correction cB — retrieved once (2026-08-19), audit-recurred that same day — audit_recurred metric test",
+  "kind": "correction"
+}

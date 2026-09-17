@@ -23,6 +23,62 @@
  *   (e) association edges = 0 — explicit constant; the ledger does not exist
  *       yet, so this is a documented floor, not a computed value.
  *
+ * Evolution p1c (2026-09-17) — schema v2, ADDITIVE ONLY (every v1 field/value
+ * above is unchanged for the same input; only new keys were added):
+ *
+ *   (f) transcript-audit events per week (same 4-week window as a/b): cited,
+ *       ignored, and audit_recurred ("recurred" events whose evidence starts
+ *       with "transcript-audit:", as opposed to ordinary session-end/
+ *       check-action "recurred" events, which stay folded into (b)'s existing
+ *       `recurred` bucket unchanged).
+ *   (g) injection_precision = cited/(cited+ignored), aggregated over the SAME
+ *       4-week window as (f) (not all-time — (f) is the only source of
+ *       cited/ignored counts this script computes, so there is no broader
+ *       population to aggregate over). null when cited+ignored===0, never 0.
+ *   (h) implicit-correction counts, keyed by provenance.source. "Implicit" =
+ *       provenance.mode === "observed" (the schema's own existing definition
+ *       of "agent inferred, not user-told" — see corrections.ts's
+ *       CorrectionProvenance doc comment). `total_by_source` is ALL-TIME
+ *       (every observed-mode correction in the store, any date); `per_week`
+ *       is windowed to the same last-4-full-ISO-weeks as (a) — the two are
+ *       deliberately NOT the same population (a correction inside the
+ *       current partial week counts in the total but not in any per_week
+ *       bucket). CHALLENGE/ESCALATION: the brief's CONTEXT claims a "Phase
+ *       1b" already landed corrections with the literal
+ *       `provenance.source: "transcript-implicit"` — verified FALSE at
+ *       implementation time (2026-09-17): `git log --all` and a repo-wide
+ *       grep for "transcript-implicit" found zero occurrences; only Phase 0
+ *       (7ff7af4) and Phase 1a (c59f04d) are merged on evolution-p0-p4. This
+ *       script does NOT hardcode that literal string — it groups by whatever
+ *       `provenance.source` value co-occurs with mode==="observed" (class,
+ *       not instance), so it is correct today (0 across the live store) and
+ *       automatically covers "transcript-implicit" or any other future
+ *       implicit-producer's source tag the moment such a producer exists,
+ *       with zero code changes. See the worker report for the full
+ *       discrepancy writeup.
+ *   (i) injection-outcome coverage — share of (project, correction_id, day)
+ *       pairs with a "retrieved" event on that day that ALSO have >=1
+ *       transcript-audit-evidenced event (cited|ignored|recurred, evidence
+ *       starting "transcript-audit:") for that SAME pair. ALL-TIME (not
+ *       window-limited — audit backfills run over arbitrary history, same
+ *       population style as (c)). DUAL DENOMINATORS, always printed
+ *       together (repo convention):
+ *         coverage_theoretical = numerator / |every retrieved-day pair, ever|
+ *         coverage_achievable  = numerator / |retrieved-day pairs whose DAY
+ *           has >=1 transcript-audit-evidenced event SOMEWHERE in the store
+ *           (any project, any correction) — i.e. days the auditor actually
+ *           ran/had transcripts for, regardless of whether THIS pair's
+ *           project happened to have matching content|.
+ *       ESCALATION (ambiguous per brief, documented per its own escalation
+ *       clause): "achievable" is scoped GLOBALLY (any project, any
+ *       correction) rather than per-project, reading the brief's "ANY
+ *       correction that day" literally rather than narrowing it to "any
+ *       correction in this pair's project" — the transcript-audit instrument
+ *       (transcript-audit.ts) scans the transcript directory ONCE per day
+ *       across every project in a single run, so "the auditor could see this
+ *       day" is a property of the DAY, not of a (day, project) combination.
+ *       Both numbers are null (never 0) when their own denominator is 0.
+ *
  * CHALLENGE (per brief) — outcome kind universe:
  *   packages/core/src/storage/corrections.ts:224-225 defines NINE kinds:
  *     retrieved | heeded | recurred | predicted | predict_hit | triggered |
@@ -89,7 +145,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-export const SCHEMA_VERSION = "evolution-baseline/v1";
+export const SCHEMA_VERSION = "evolution-baseline/v2";
 
 /**
  * Canonical outcome-event kind universe, per packages/core/src/storage/
@@ -280,7 +336,16 @@ function readOutcomeEvents(root, project) {
       corrupt++;
       continue;
     }
-    events.push({ correction_id: evt.correction_id, kind: evt.kind, at: evt.at });
+    // v2 (f)/(i): evidence carried through opportunistically (optional field
+    // on CorrectionOutcome — see corrections.ts). Not part of the corrupt-line
+    // validity check above; a missing/non-string evidence is simply absent,
+    // never a parse failure.
+    events.push({
+      correction_id: evt.correction_id,
+      kind: evt.kind,
+      at: evt.at,
+      evidence: typeof evt.evidence === "string" ? evt.evidence : undefined,
+    });
   }
   return { events, linesTotal: lines.length, corrupt, exists: true };
 }
@@ -292,6 +357,32 @@ function provenanceBucket(provenance) {
   const mode = provenance.mode;
   if (typeof mode === "string" && mode.trim().length > 0) return mode.trim();
   return "unspecified";
+}
+
+/**
+ * v2 (h): "implicit" = provenance.mode === "observed" exactly (the schema's
+ * own existing "agent inferred, not user-told" semantic — see file docblock).
+ * Raw provenance object, no defaulting — mirrors provenanceBucket()'s
+ * convention of reading exactly what's on disk.
+ */
+function isObservedProvenance(provenance) {
+  return !!provenance && typeof provenance === "object" && !Array.isArray(provenance) && provenance.mode === "observed";
+}
+
+/** provenance.source bucket for an already-confirmed-observed provenance object. */
+function sourceBucket(source) {
+  if (typeof source === "string" && source.trim().length > 0) return source.trim();
+  return "unspecified";
+}
+
+/** v2 (f)/(i): the single-producer evidence-prefix gate transcript-audit.ts's recordOutcome() enforces (corrections.ts). */
+function isTranscriptAuditEvidence(evidence) {
+  return typeof evidence === "string" && evidence.startsWith("transcript-audit:");
+}
+
+/** Rounds to 4 decimal places, matching the existing verdict_coverage convention. */
+function round4(x) {
+  return Number(x.toFixed(4));
 }
 
 function buildKindObject(countsMap) {
@@ -350,7 +441,20 @@ export function computeBaseline({ storeRoot, asOf }) {
   const perWeekKind = weeks.map(() => new Map());
   const perWeekKindTotal = weeks.map(() => 0);
 
-  // (project, correction_id) -> [{kind, at, atMs, day}], append order preserved
+  // v2 (f): cited/ignored/audit_recurred, same 4-week window, tallied in the
+  // SAME per-event loop as perWeekKind below (no second pass over the data).
+  const perWeekCited = weeks.map(() => 0);
+  const perWeekIgnored = weeks.map(() => 0);
+  const perWeekAuditRecurred = weeks.map(() => 0);
+
+  // v2 (h): implicit corrections (provenance.mode === "observed"), keyed by
+  // provenance.source. `totalBySource` is ALL-TIME (not window-gated);
+  // `perWeekImplicitBySource` mirrors perWeekProvenance's windowing.
+  const totalImplicitBySource = new Map();
+  const perWeekImplicitBySource = weeks.map(() => new Map());
+  const implicitSourceKeysSeen = new Set();
+
+  // (project, correction_id) -> [{kind, at, atMs, day, evidence}], append order preserved
   const outcomesByKey = new Map();
 
   for (const project of projects) {
@@ -368,6 +472,21 @@ export function computeBaseline({ storeRoot, asOf }) {
     for (const rec of records) {
       const dayShort = rec.date.slice(0, 10);
       const wIdx = findWeekIndex(dayShort, weeks);
+
+      // v2 (h): implicit-correction ALL-TIME total — computed BEFORE the
+      // window early-continue below (v1's own early-continue, position and
+      // behavior unchanged) since `total_by_source` is deliberately NOT
+      // window-limited (see file docblock).
+      if (isObservedProvenance(rec.provenance)) {
+        const srcKey = sourceBucket(rec.provenance.source);
+        implicitSourceKeysSeen.add(srcKey);
+        totalImplicitBySource.set(srcKey, (totalImplicitBySource.get(srcKey) ?? 0) + 1);
+        if (wIdx !== -1) {
+          const im = perWeekImplicitBySource[wIdx];
+          im.set(srcKey, (im.get(srcKey) ?? 0) + 1);
+        }
+      }
+
       if (wIdx === -1) continue; // outside the 4-week window — not counted in metric (a)
       perWeekTotal[wIdx]++;
       const bucket = provenanceBucket(rec.provenance);
@@ -398,6 +517,13 @@ export function computeBaseline({ storeRoot, asOf }) {
         const kindKey = KNOWN_OUTCOME_KINDS.includes(evt.kind) ? evt.kind : "other";
         const m = perWeekKind[wIdx];
         m.set(kindKey, (m.get(kindKey) ?? 0) + 1);
+
+        // v2 (f): cited/ignored/audit_recurred, same week bucket, ADDITIVE to
+        // (not instead of) the v1 by_kind tally above (cited/ignored fall
+        // into v1's "other" bucket unchanged — v1 predates these kinds).
+        if (evt.kind === "cited") perWeekCited[wIdx]++;
+        else if (evt.kind === "ignored") perWeekIgnored[wIdx]++;
+        else if (evt.kind === "recurred" && isTranscriptAuditEvidence(evt.evidence)) perWeekAuditRecurred[wIdx]++;
       }
 
       // NUL separator, not a space: a project slug or correction_id
@@ -409,7 +535,8 @@ export function computeBaseline({ storeRoot, asOf }) {
         arr = [];
         outcomesByKey.set(key, arr);
       }
-      arr.push({ kind: evt.kind, at: evt.at, atMs: Date.parse(evt.at), day });
+      // v2 (i): evidence carried through for the transcript-audit coverage check.
+      arr.push({ kind: evt.kind, at: evt.at, atMs: Date.parse(evt.at), day, evidence: evt.evidence });
     }
   }
 
@@ -446,6 +573,61 @@ export function computeBaseline({ storeRoot, asOf }) {
     }
   }
 
+  // ── metric (i): injection-outcome coverage, ALL-TIME, dual denominators ──
+  // retrievedDaysByKey: per (project,correction_id) key, the set of days
+  // that key has >=1 "retrieved" event. auditEvidencedDaysByKey: same key
+  // shape, the set of days that key has >=1 transcript-audit-evidenced event
+  // (cited|ignored|recurred, evidence starting "transcript-audit:").
+  // globalAuditedDays: the UNION of those days across EVERY key in the store
+  // -- "days the auditor could see" per the file docblock's ESCALATION note.
+  // Nested Maps (not a flattened "key+day" string) so no separator character
+  // is ever needed between a key and a day -- sidesteps the exact collision
+  // class the NUL-separator comment above (outcomesByKey's construction)
+  // exists to guard against.
+  const retrievedDaysByKey = new Map();
+  const auditEvidencedDaysByKey = new Map();
+  const globalAuditedDays = new Set();
+
+  function addToDaySetMap(map, key, day) {
+    let daySet = map.get(key);
+    if (!daySet) {
+      daySet = new Set();
+      map.set(key, daySet);
+    }
+    daySet.add(day);
+  }
+
+  for (const [key, arr] of outcomesByKey.entries()) {
+    for (const e of arr) {
+      if (e.kind === "retrieved") {
+        addToDaySetMap(retrievedDaysByKey, key, e.day);
+      }
+      if ((e.kind === "cited" || e.kind === "ignored" || e.kind === "recurred") && isTranscriptAuditEvidence(e.evidence)) {
+        globalAuditedDays.add(e.day);
+        addToDaySetMap(auditEvidencedDaysByKey, key, e.day);
+      }
+    }
+  }
+
+  let theoreticalDenominator = 0;
+  let theoreticalNumerator = 0;
+  let achievableDenominator = 0;
+  let achievableNumerator = 0;
+
+  for (const [key, days] of retrievedDaysByKey.entries()) {
+    const coveredDays = auditEvidencedDaysByKey.get(key);
+    for (const day of days) {
+      theoreticalDenominator++;
+      const covered = !!coveredDays && coveredDays.has(day);
+      if (covered) theoreticalNumerator++;
+
+      if (globalAuditedDays.has(day)) {
+        achievableDenominator++;
+        if (covered) achievableNumerator++;
+      }
+    }
+  }
+
   const orderedProvenanceKeys = [
     "none",
     ...[...provenanceKeysSeen].filter((k) => k !== "none").sort(),
@@ -471,6 +653,53 @@ export function computeBaseline({ storeRoot, asOf }) {
     verdictDenominator > 0 ? Number((verdictNumerator / verdictDenominator).toFixed(4)) : null;
   const canonicalCoverage =
     verdictDenominator > 0 ? Number((canonicalNumerator / verdictDenominator).toFixed(4)) : null;
+
+  // ── v2 (f): transcript-audit events per week (same 4-week window) ───────
+  const transcriptAuditEventsPerWeek = weeks.map((w, i) => ({
+    iso_week: w.iso_week,
+    start: w.start,
+    end: w.end,
+    cited: perWeekCited[i],
+    ignored: perWeekIgnored[i],
+    audit_recurred: perWeekAuditRecurred[i],
+  }));
+
+  // ── v2 (g): injection_precision, aggregated over the SAME 4-week window ─
+  const citedTotal = perWeekCited.reduce((a, b) => a + b, 0);
+  const ignoredTotal = perWeekIgnored.reduce((a, b) => a + b, 0);
+  const injectionPrecisionDenominator = citedTotal + ignoredTotal;
+  const injectionPrecision = {
+    window: { start: weeks[0].start, end: weeks[weeks.length - 1].end },
+    cited: citedTotal,
+    ignored: ignoredTotal,
+    precision: injectionPrecisionDenominator > 0 ? round4(citedTotal / injectionPrecisionDenominator) : null,
+  };
+
+  // ── v2 (h): implicit corrections, keyed by provenance.source ────────────
+  const orderedImplicitSourceKeys = [...implicitSourceKeysSeen].sort();
+  const implicitCorrections = {
+    total_by_source: buildProvenanceObject(totalImplicitBySource, orderedImplicitSourceKeys),
+    per_week: weeks.map((w, i) => ({
+      iso_week: w.iso_week,
+      start: w.start,
+      end: w.end,
+      by_source: buildProvenanceObject(perWeekImplicitBySource[i], orderedImplicitSourceKeys),
+    })),
+  };
+
+  // ── v2 (i): injection-outcome coverage, dual denominators ────────────────
+  const injectionOutcomeCoverage = {
+    theoretical: {
+      numerator: theoreticalNumerator,
+      denominator: theoreticalDenominator,
+      coverage: theoreticalDenominator > 0 ? round4(theoreticalNumerator / theoreticalDenominator) : null,
+    },
+    achievable: {
+      numerator: achievableNumerator,
+      denominator: achievableDenominator,
+      coverage: achievableDenominator > 0 ? round4(achievableNumerator / achievableDenominator) : null,
+    },
+  };
 
   return {
     schema: SCHEMA_VERSION,
@@ -510,6 +739,10 @@ export function computeBaseline({ storeRoot, asOf }) {
       },
       distinct_corrections_retrieved_last_28_days: distinctRetrievedLast28Days,
       association_edges: 0,
+      transcript_audit_events_per_week: transcriptAuditEventsPerWeek,
+      injection_precision: injectionPrecision,
+      implicit_corrections: implicitCorrections,
+      injection_outcome_coverage: injectionOutcomeCoverage,
     },
     diagnostics,
     schema_notes: {
@@ -538,6 +771,48 @@ export function computeBaseline({ storeRoot, asOf }) {
       association_edges:
         "Explicit constant 0 — the association-edge ledger does not exist yet in this store version. " +
         "Not a computed value; recorded as a documented floor for later phases to compare against.",
+      transcript_audit_events_v2:
+        "(f) cited/ignored/audit_recurred tallied over the SAME last-4-full-ISO-weeks window as (a)/(b). " +
+        "'audit_recurred' = 'recurred' kind events whose evidence starts with 'transcript-audit:' (the " +
+        "single-producer gate corrections.ts's recordOutcome() enforces for this instrument, see " +
+        "transcript-audit.ts). Ordinary (non-audit) 'recurred' events are UNCHANGED in (b)'s existing " +
+        "'recurred' bucket — this is an additional cross-cut, not a replacement. cited/ignored are NOT in " +
+        "v1's KNOWN_OUTCOME_KINDS, so they also still land in (b)'s 'other' bucket unchanged — v1 predates " +
+        "these kinds and its behavior is deliberately untouched.",
+      injection_precision_v2:
+        "(g) injection_precision = cited/(cited+ignored), aggregated over the SAME 4-week window as (f) " +
+        "(sum of the per-week cited/ignored columns) — NOT all-time, since (f) is the only source of " +
+        "cited/ignored counts this script computes. null when cited+ignored===0, never 0.",
+      implicit_corrections_v2:
+        "(h) 'implicit correction' = a correction record whose provenance.mode === 'observed' exactly " +
+        "(the schema's own pre-existing 'agent inferred, not user-told' semantic — see corrections.ts's " +
+        "CorrectionProvenance doc comment). Grouped by the raw provenance.source string value (class, not " +
+        "instance — covers whatever source tag any current or future implicit-producer uses, with zero " +
+        "code changes). 'unspecified' when mode==='observed' but source is missing/malformed. " +
+        "total_by_source is ALL-TIME (every observed-mode correction ever, any date); per_week is windowed " +
+        "to the SAME last-4-full-ISO-weeks as (a) — the two are deliberately DIFFERENT populations (a " +
+        "correction inside the current partial week counts in the total but appears in no per_week " +
+        "bucket). CHALLENGE/ESCALATION: the evolution worker brief's CONTEXT asserted a 'Phase 1b' had " +
+        "already landed corrections with the literal provenance.source==='transcript-implicit' — verified " +
+        "FALSE at implementation time (2026-09-17): neither `git log --all` on evolution-p0-p4 nor a " +
+        "repo-wide grep for 'transcript-implicit' found any occurrence; only Phase 0 (7ff7af4) and Phase 1a " +
+        "(c59f04d) are merged. This script does not hardcode that literal string for exactly that reason — " +
+        "it is correct today (0 across the live store, since no observed-mode-with-that-source corrections " +
+        "exist) and will pick up 'transcript-implicit' or any other future implicit-producer's source tag " +
+        "automatically the moment one exists.",
+      injection_outcome_coverage_v2:
+        "(i) share of (project, correction_id, day) pairs with a 'retrieved' event on that day that ALSO " +
+        "have >=1 transcript-audit-evidenced event (cited|ignored|recurred, evidence starting " +
+        "'transcript-audit:') for that SAME pair. ALL-TIME (not window-limited — audit backfills run over " +
+        "arbitrary history, same population style as (c)/(d)). DUAL DENOMINATORS, always printed together: " +
+        "coverage_theoretical = numerator / |every retrieved-day pair, ever|; coverage_achievable = " +
+        "numerator / |retrieved-day pairs whose DAY has >=1 transcript-audit-evidenced event SOMEWHERE in " +
+        "the store (ANY project, ANY correction)|. ESCALATION (ambiguous per the brief's own wording, " +
+        "documented per its escalation clause): 'achievable' is scoped GLOBALLY across every project/" +
+        "correction rather than per-project — transcript-audit.ts scans the transcript directory ONCE per " +
+        "day across every project in a single run, so 'a day the auditor could see' is a property of the " +
+        "DAY, not of a (day, project) pair. Both coverage numbers are null (never 0) when their own " +
+        "denominator is 0.",
     },
   };
 }
@@ -581,6 +856,25 @@ export function renderTable(result) {
   L.push(`(d) distinct corrections retrieved in last 28 days [${result.window.last_28_days.start}..${result.window.last_28_days.end}]: ${result.metrics.distinct_corrections_retrieved_last_28_days}`);
   L.push("");
   L.push(`(e) association edges: ${result.metrics.association_edges}`);
+  L.push("");
+  L.push("(f) transcript-audit events per week (cited/ignored/audit_recurred):");
+  for (const w of result.metrics.transcript_audit_events_per_week) {
+    L.push(`  ${w.iso_week} [${w.start}..${w.end}]  cited=${w.cited} ignored=${w.ignored} audit_recurred=${w.audit_recurred}`);
+  }
+  L.push("");
+  const ip = result.metrics.injection_precision;
+  L.push(`(g) injection precision [${ip.window.start}..${ip.window.end}]: ${ip.cited} / (${ip.cited}+${ip.ignored}) = ${ip.precision === null ? "n/a" : ip.precision}`);
+  L.push("");
+  const ic = result.metrics.implicit_corrections;
+  L.push(`(h) implicit corrections (provenance.mode=observed), total by source: ${JSON.stringify(ic.total_by_source)}`);
+  for (const w of ic.per_week) {
+    L.push(`  ${w.iso_week} [${w.start}..${w.end}]  ${JSON.stringify(w.by_source)}`);
+  }
+  L.push("");
+  const cov = result.metrics.injection_outcome_coverage;
+  L.push("(i) injection-outcome coverage (all-time, dual denominators):");
+  L.push(`  theoretical: ${cov.theoretical.numerator} / ${cov.theoretical.denominator} = ${cov.theoretical.coverage === null ? "n/a" : cov.theoretical.coverage}`);
+  L.push(`  achievable : ${cov.achievable.numerator} / ${cov.achievable.denominator} = ${cov.achievable.coverage === null ? "n/a" : cov.achievable.coverage}`);
   L.push("");
   L.push("diagnostics:");
   for (const [k, v] of Object.entries(result.diagnostics)) {

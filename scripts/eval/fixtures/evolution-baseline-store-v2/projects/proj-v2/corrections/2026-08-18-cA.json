@@ -1,0 +1,7 @@
+{
+  "id": "cA",
+  "date": "2026-08-18",
+  "project": "proj-v2",
+  "rule": "fixture correction cA — retrieved twice (2026-08-18 and 2026-08-26), cited on the first day and ignored on the second — injection-outcome coverage test",
+  "kind": "correction"
+}

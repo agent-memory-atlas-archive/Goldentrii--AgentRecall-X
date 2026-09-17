@@ -1,0 +1,7 @@
+{
+  "id": "c-no-prov",
+  "date": "2026-08-20",
+  "project": "proj-v2",
+  "rule": "fixture correction c-no-prov — no provenance field at all — negative case, must be EXCLUDED from implicit-correction counts",
+  "kind": "correction"
+}

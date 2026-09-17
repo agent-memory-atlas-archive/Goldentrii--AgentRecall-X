@@ -1,0 +1,8 @@
+{
+  "id": "told1",
+  "date": "2026-08-19",
+  "project": "proj-v2",
+  "rule": "fixture correction told1 — provenance.mode=told (user-stated, NOT implicit) — negative case, must be EXCLUDED from implicit-correction counts",
+  "kind": "correction",
+  "provenance": { "source": "user", "mode": "told" }
+}

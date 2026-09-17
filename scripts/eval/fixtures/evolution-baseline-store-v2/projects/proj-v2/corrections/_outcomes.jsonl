@@ -1,0 +1,9 @@
+{"correction_id":"cA","project":"proj-v2","kind":"retrieved","at":"2026-08-18T10:00:00.000Z"}
+{"correction_id":"cA","project":"proj-v2","kind":"cited","at":"2026-08-18T12:00:00.000Z","evidence":"transcript-audit:sess1:cited — matched [x,y]"}
+{"correction_id":"cB","project":"proj-v2","kind":"retrieved","at":"2026-08-19T10:00:00.000Z"}
+{"correction_id":"cB","project":"proj-v2","kind":"recurred","at":"2026-08-19T12:00:00.000Z","evidence":"transcript-audit:sess2:recurred — \"bug happened again\""}
+{"correction_id":"cC","project":"proj-v2","kind":"retrieved","at":"2026-08-25T09:00:00.000Z"}
+{"correction_id":"cA","project":"proj-v2","kind":"retrieved","at":"2026-08-26T08:00:00.000Z"}
+{"correction_id":"cA","project":"proj-v2","kind":"ignored","at":"2026-08-26T12:00:00.000Z","evidence":"transcript-audit:sess3:ignored — no citation/recurrence across 1 transcript(s)"}
+{"correction_id":"cD","project":"proj-v2","kind":"retrieved","at":"2026-08-26T09:00:00.000Z"}
+{"correction_id":"cA","project":"proj-v2","kind":"recurred","at":"2026-09-05T09:00:00.000Z","evidence":"session-end:normal-recurrence-check"}
