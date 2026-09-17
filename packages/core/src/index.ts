@@ -782,6 +782,42 @@ export type {
   ImplicitHarvestResult,
 } from "./tools-logic/implicit-harvest.js";
 
+// Evolution p2 (2026-09-17) — `ar assoc rebuild` / `ar assoc stats`: the
+// S_ji associative-strength matrix, derived purely from Phase-1a's `cited`
+// events in every project's `corrections/_outcomes.jsonl`. Strictly
+// read-only over the ledger; nothing downstream consumes edges.json yet.
+export {
+  runAssocRebuild,
+  runAssocStats,
+  buildAssociationGraph,
+  computeAssocStats,
+  computeDegenerateReason,
+  readAssocEdgesFile,
+  emptyAssocEdgesFile,
+  sortAssocEdges,
+  assocNodeId,
+  parseAssocNodeId,
+  assocEdgeKey,
+  parseTranscriptBasenameFromEvidence,
+  labelForAssocNode,
+  associationDirFor,
+  defaultEdgesPathFor,
+} from "./tools-logic/association.js";
+export type {
+  AssocGranularity,
+  AssocEdge,
+  AssocEdgesFile,
+  AssocMalformedRow,
+  AssocRebuildOptions,
+  AssocRebuildResult,
+  AssocStatsOptions,
+  AssocStatsResult,
+  AssocStatsRunResult,
+  AssocStatsTopEdge,
+  AssocDegreeDistribution,
+  AssocGraphBuild,
+} from "./tools-logic/association.js";
+
 // Wave 5 — corrections-prediction (north-star) + compression remainder
 export { deriveBlindSpots } from "./helpers/blind-spots.js";
 export type { BlindSpot, BlindSpotProfile } from "./helpers/blind-spots.js";

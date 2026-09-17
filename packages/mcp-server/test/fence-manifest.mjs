@@ -115,6 +115,11 @@ export const MANIFEST = [
   { channel: "cli_subcommand", id: "bootstrap", status: "allowlisted", reason: "scan metadata (paths, counts, languages) about discoverable, NOT-YET-imported content — not memory content itself." },
   { channel: "cli_subcommand", id: "setup", status: "allowlisted", reason: "one-time operator backfill progress messages (file counts) — not memory content rendered for agent consumption." },
   { channel: "cli_subcommand", id: "outcomes", status: "fenced", file: "packages/cli/src/index.ts" },
+  // Evolution p2 (2026-09-17): the "stats" sub-action's human-table branch
+  // calls outputFenced() (top edges embed a truncated correction rule
+  // string — retrieved prose) — that call backs this whole top-level entry.
+  // "rebuild" carries no prose (see assoc.rebuild below).
+  { channel: "cli_subcommand", id: "assoc", status: "fenced", file: "packages/cli/src/index.ts" },
   { channel: "cli_subcommand", id: "scrub", status: "allowlisted", reason: "not a memory-surfacing command — a fail-CLOSED secret-scrub CLI primitive (scrubForExport), a different mechanism/threat model entirely (secret exfil, not agent-context injection)." },
 
   // ── CLI sub-actions (best-effort second level, text-window heuristic —
@@ -166,6 +171,17 @@ export const MANIFEST = [
   // same established --json/structured-contract precedent as outcomes.audit
   // / awareness.read / mirror --json.
   { channel: "cli_subaction", id: "corrections.harvest-implicit", status: "fenced", file: "packages/cli/src/index.ts" },
+  // Evolution p2 (2026-09-17): `ar assoc rebuild` / `ar assoc stats`.
+  { channel: "cli_subaction", id: "assoc.--help", status: "allowlisted", reason: "static, hardcoded help text — not retrieved content." },
+  { channel: "cli_subaction", id: "assoc.-h", status: "allowlisted", reason: "alias of assoc --help — same static help text." },
+  { channel: "cli_subaction", id: "assoc.rebuild", status: "allowlisted", reason: "counts, paths, node ids (structural slugs, same class as AgentRecall.graph.readGraph), and JSON.parse/validation error strings — no correction rule/evidence prose is ever printed by rebuild, in either the human table or --json." },
+  // The human-table branch's top_edges labels embed a truncated correction
+  // `rule` string (labelForAssocNode reads it straight off the correction
+  // record) — genuine retrieved prose, same injection-vector class as
+  // mirror's citations — so this branch calls outputFenced(). --json stays
+  // unfenced by the same established --json/structured-contract precedent
+  // as outcomes.audit / awareness.read / mirror --json.
+  { channel: "cli_subaction", id: "assoc.stats", status: "fenced", file: "packages/cli/src/index.ts" },
 
   // ── SDK exports ─────────────────────────────────────────────────────────
   // Discovered surface = every public method of `class AgentRecall` plus

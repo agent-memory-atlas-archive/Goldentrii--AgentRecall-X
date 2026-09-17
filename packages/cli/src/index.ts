@@ -137,6 +137,19 @@ OUTCOMES (dream-audit verdicts — C3b):
   ar outcomes --help
       Show detailed help with agent instructions.
 
+ASSOCIATION (Phase 2 S_ji graph — evolution p2):
+  ar assoc rebuild [--store <path>] [--out <path>] [--dry-run] [--json]
+      Full deterministic rebuild of the association graph from every project's
+      corrections/_outcomes.jsonl "cited" events (Phase 1a). Writes
+      <store>/association/edges.json unless --dry-run. Byte-identical on
+      rebuild over an unchanged ledger.
+  ar assoc stats [--store <path>] [--json]
+      Reads edges.json: node/edge counts, weight histogram, degree
+      distribution, top-10 heaviest edges. Renders "DEGENERATE: <reason>"
+      when the graph has <5 edges or all edge weights are equal.
+  ar assoc --help
+      Show detailed help with agent instructions.
+
 DIAGNOSTICS:
   ar scrub [--check]   Scrub stdin through the fail-CLOSED export guard and write to stdout.
       Default: stdin → scrubbed content on stdout; exit 0 (clean/redacted), 2 (secret survived scrub).
@@ -4109,6 +4122,173 @@ agent_instruction: use "audit-candidates" to list unknown-verdict corrections fo
         `Usage: ar outcomes audit-candidates|record|rebuild|audit [...]\n` +
         `Run: ar outcomes --help\n` +
         `agent_instruction: use "audit-candidates" to list unknowns, "record" to write a verdict, "rebuild" to recompute counters from the ledger, "audit" for transcript-grounded verdicts\n`
+      );
+      process.exitCode = 1;
+      break;
+    }
+
+    // -----------------------------------------------------------------------
+    // ar assoc — Phase 2 S_ji association-strength graph (evolution p2)
+    // -----------------------------------------------------------------------
+    case "assoc": {
+      const sub = rest[0];
+      const assocRest = rest.slice(1);
+
+      if (sub === "--help" || sub === "-h" || !sub) {
+        output(`ar assoc — Phase 2 S_ji association-strength graph (evolution p2)
+
+The activation model Phase 3 will build (A_i = B_i + Σ W_j·S_ji) reads THIS
+graph. Strictly downstream of Phase 1a's transcript-audit "cited" events —
+this command never re-walks transcripts and never writes anywhere except
+<store>/association/.
+
+SUBCOMMANDS:
+  ar assoc rebuild [--store <path>] [--out <path>] [--dry-run] [--json]
+      Full deterministic rebuild: reads every project's
+      corrections/_outcomes.jsonl for kind="cited" events, groups them into
+      co-activation sessions (session_id > single-transcript evidence tag >
+      (project, day) fallback — always project-scoped, so two corrections in
+      different projects can never share an edge even under the same
+      session_id), and derives an undirected edge between every pair of
+      DISTINCT correction nodes ("corr:<project>/<correction_id>") observed
+      together. Edge weight = number of DISTINCT co-activation groups the
+      pair co-occurred in (never raw event count). Writes
+      <store>/association/edges.json (default --store: the same root
+      AGENT_RECALL_ROOT/--root/setRoot() resolves) unless --dry-run.
+      Byte-identical across reruns over an unchanged ledger. Corrupt ledger
+      lines are skipped and counted, never crash the rebuild.
+  ar assoc stats [--store <path>] [--json]
+      Reads edges.json and reports node/edge counts, a weight histogram, the
+      degree distribution (min/median/p90/max), and the top-10 heaviest
+      edges with human-readable labels (best-effort — falls back to the raw
+      node id when the correction record is gone). Renders exactly
+      "DEGENERATE: <reason>" when the graph has fewer than 5 edges or every
+      edge shares the same weight — this is the Phase-2 exit-condition probe.
+  ar assoc --help
+      Show this help.
+
+agent_instruction: run "rebuild" after \`ar outcomes audit\` has produced
+  "cited" events, then "stats" to sanity-check the graph before Phase 3
+  wires it into the activation model. A DEGENERATE result means don't trust
+  the weights yet — collect more transcript-audit history first.`);
+        break;
+      }
+
+      if (sub === "rebuild") {
+        const storeFlag = getFlag("--store", assocRest);
+        const outFlag = getFlag("--out", assocRest);
+        const dryRun = hasFlag("--dry-run", assocRest);
+        const asJson = hasFlag("--json", assocRest);
+
+        try {
+          const result = await core.runAssocRebuild({
+            storeRoot: storeFlag ?? undefined,
+            outPath: outFlag ?? undefined,
+            dryRun,
+          });
+
+          if (asJson) {
+            output(result);
+          } else {
+            const f = result.file;
+            const g = f.groups.by_granularity;
+            const lines: string[] = [
+              `ar assoc rebuild — store: ${result.store_root}${result.dry_run ? " (DRY-RUN — nothing written)" : ""}`,
+              `out: ${result.out_path}`,
+              `projects scanned: ${result.projects_scanned}`,
+              `built_from_events: ${f.built_from_events}`,
+              `groups: ${f.groups.total} (session_id=${g.session_id}, transcript_basename=${g.transcript_basename}, project_day=${g.project_day})`,
+              `nodes: ${f.nodes}`,
+              `edges: ${f.edges.length}`,
+            ];
+            if (g.project_day > 0 && g.session_id === 0 && g.transcript_basename === 0) {
+              lines.push(
+                `⚠ every group fell back to the coarsest (project, day) granularity — no session_id or ` +
+                `parseable transcript basename was available anywhere in the ledger. Association weights are ` +
+                `real but coarser than they could be; re-run \`ar outcomes audit\` first if that's unexpected.`,
+              );
+            } else if (g.project_day > 0) {
+              lines.push(
+                `⚠ ${g.project_day} group(s) fell back to the coarsest (project, day) granularity.`,
+              );
+            }
+            if (result.malformed_rows.length > 0) {
+              lines.push(
+                `⚠ malformed ledger row(s): ${result.malformed_rows.slice(0, 5).map((m) => `${m.project} line ${m.line} (${m.error})`).join("; ")}`,
+              );
+            }
+            if (result.dry_run) lines.push("(dry-run — pass without --dry-run to write edges.json)");
+            output(lines.join("\n"));
+          }
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          process.stderr.write(
+            `Error rebuilding association graph: ${msg}\n` +
+            `agent_instruction: check that --store (if passed) is a readable directory\n`
+          );
+          process.exitCode = 1;
+        }
+        break;
+      }
+
+      if (sub === "stats") {
+        const storeFlag = getFlag("--store", assocRest);
+        const asJson = hasFlag("--json", assocRest);
+
+        try {
+          const result = await core.runAssocStats({ storeRoot: storeFlag ?? undefined });
+
+          if (asJson) {
+            output(result);
+          } else {
+            const lines: string[] = [
+              `ar assoc stats — ${result.edges_path}`,
+              `nodes: ${result.node_count}`,
+              `edges: ${result.edge_count}`,
+              `weight histogram: ${
+                Object.entries(result.weight_histogram)
+                  .sort((a, b) => Number(a[0]) - Number(b[0]))
+                  .map(([w, n]) => `${w}=${n}`)
+                  .join(", ") || "(none)"
+              }`,
+              `degree distribution: min=${result.degree_distribution.min} median=${result.degree_distribution.median} p90=${result.degree_distribution.p90} max=${result.degree_distribution.max}`,
+              "",
+              "top edges:",
+            ];
+            if (result.top_edges.length === 0) {
+              lines.push("  (none)");
+            }
+            for (const e of result.top_edges) {
+              lines.push(`  ${e.weight}  ${e.label_a}  <->  ${e.label_b}  (first_seen=${e.first_seen}, last_seen=${e.last_seen})`);
+            }
+            if (result.degenerate) {
+              lines.push("", `DEGENERATE: ${result.degenerate}`);
+            }
+            // label_a/label_b embed a truncated correction RULE string (P1
+            // fence — human-authored corrective-instruction prose read back
+            // from storage, same class as mirror/resurrect's citations) —
+            // fence the rendered table, unlike the pure-count `rebuild`
+            // render. --json stays unfenced (established machine-consumption
+            // exemption — see outcomes audit/rebuild's own --json branches).
+            outputFenced(lines.join("\n"));
+          }
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          process.stderr.write(
+            `Error reading association stats: ${msg}\n` +
+            `agent_instruction: run \`ar assoc rebuild\` first if edges.json doesn't exist yet\n`
+          );
+          process.exitCode = 1;
+        }
+        break;
+      }
+
+      // Unknown subcommand
+      process.stderr.write(
+        `Unknown assoc subcommand: ${sub}\n` +
+        `Usage: ar assoc rebuild|stats [...]\n` +
+        `Run: ar assoc --help\n` +
+        `agent_instruction: use "rebuild" to (re)compute the S_ji graph, "stats" to inspect it\n`
       );
       process.exitCode = 1;
       break;
