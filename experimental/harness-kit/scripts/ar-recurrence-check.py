@@ -109,13 +109,32 @@ def load_reflection_state(ar_root: Path) -> dict:
 # Correction loading
 # ---------------------------------------------------------------------------
 
-def correction_member_id(slug: str, filename_stem: str) -> str:
-    return f"{slug}/{filename_stem}"
-
-
-def load_all_corrections(ar_root: Path) -> list[tuple[str, str, dict]]:
+def correction_member_id(slug: str, filename_stem: str, idx: int = 0) -> str:
     """
-    Yield (slug, filename_stem, record) for every valid correction record.
+    Stable per-record member id.
+
+    Record 0 in a file keeps the backward-compatible "<slug>/<stem>" id (the
+    only shape that has ever existed live). Records at index >=1 — possible
+    when a .json file holds a list of records — get a distinct
+    "<slug>/<stem>#<idx>" id so they are never silently merged onto record 0's
+    id and dropped by the known_ids dedup in cmd_scan.
+
+    idx is the record's position in the file's RAW record list (before any
+    filtering for empty rule / retracted_at), so the id a record gets does
+    not shift if an earlier record in the same file is later retracted.
+    """
+    if idx == 0:
+        return f"{slug}/{filename_stem}"
+    return f"{slug}/{filename_stem}#{idx}"
+
+
+def load_all_corrections(ar_root: Path) -> list[tuple[str, str, int, dict]]:
+    """
+    Yield (slug, filename_stem, record_idx, record) for every valid correction record.
+
+    record_idx is the record's 0-based position in the file's raw record list
+    (dict → always 0; list → its list index), stable regardless of which
+    records get filtered out below — see correction_member_id.
 
     Handles:
       - each .json file may contain a dict or a list of dicts
@@ -168,7 +187,7 @@ def load_all_corrections(ar_root: Path) -> list[tuple[str, str, dict]]:
                 )
                 continue
 
-            for record in records:
+            for idx, record in enumerate(records):
                 if not isinstance(record, dict):
                     continue
                 rule = record.get("rule", "") or ""
@@ -176,7 +195,7 @@ def load_all_corrections(ar_root: Path) -> list[tuple[str, str, dict]]:
                     continue  # skip records with empty rule text
                 if record.get("retracted_at"):
                     continue  # retracted corrections are withdrawn signal, not errors
-                results.append((slug, filename_stem, record))
+                results.append((slug, filename_stem, idx, record))
 
     return results
 
@@ -208,7 +227,14 @@ def is_phantom(correction_date: str, rule_date: str) -> bool:
     """
     Return True iff correction_date STRICTLY after rule_date.
     Same day = genesis, not phantom.
-    Invalid/missing dates → False (safe default).
+    Invalid/missing dates → False (safe default; NOT a claim of "not phantom").
+
+    A missing/None rule_date is a distinct case: the class has no anchor date
+    at all, so it can never alarm here by construction — that blind spot must
+    NOT be papered over by fabricating True. It is instead surfaced as a
+    separate "unmeasurable (no rule_date)" count in ar-scoreboard.py's digest
+    (format_digest), computed independently from the class's rule_date field,
+    so the absence of a signal stays visible instead of reading as "clean".
     """
     if not correction_date or not rule_date:
         return False
@@ -237,8 +263,8 @@ def cmd_scan(ar_root: Path) -> None:
     new_per_class: dict[str, int] = {cls["id"]: 0 for cls in classes}
     new_unclassified = 0
 
-    for slug, filename_stem, record in all_corrections:
-        member_id = correction_member_id(slug, filename_stem)
+    for slug, filename_stem, idx, record in all_corrections:
+        member_id = correction_member_id(slug, filename_stem, idx)
         if member_id in known_ids:
             continue
         known_ids.add(member_id)

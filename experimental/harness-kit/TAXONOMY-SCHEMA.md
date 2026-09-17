@@ -48,7 +48,7 @@ owner-curated data — the kit ships none.
 | `description` | str | What failure pattern this class covers. Used by the `/arreflect` LLM judge when confirming provisional members. |
 | `keywords` | list[str] | Case-insensitive **substring** matches against a correction's `rule` + `tags`. Drives `--scan` auto-classification (see scoring below). |
 | `rule_ref` | str | Human-readable pointer to the encoded rule that covers this class (e.g. a CLAUDE.md section or `rules/<file>.md` entry). |
-| `rule_date` | str `YYYY-MM-DD` | Date the rule was first encoded. The phantom comparison anchor. |
+| `rule_date` | str `YYYY-MM-DD` | Date the rule was first encoded. The phantom comparison anchor. A class with no `rule_date` (`null`/missing) can **never** produce a phantom member — `is_phantom()` safely returns `false` rather than fabricate one — so `ar-scoreboard.py`'s digest counts such classes separately as `N unmeasurable (no rule_date)` instead of letting them silently read as "0 phantom = clean". |
 | `rule_date_confidence` | `"exact"` \| `"approx"` | How reliable `rule_date` is. When `"approx"`, phantom members carry the note `"(approx rule date)"`. |
 | `members` | list | Corrections assigned to this class (see below). |
 | `related` | list[str] | Ids of related classes. Curation aid; not used by the scanner. |
@@ -59,7 +59,7 @@ owner-curated data — the kit ships none.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `id` | str | `"<project_slug>/<filename_stem>"` — the correction file's project directory and filename without `.json`. Uniqueness key across the whole taxonomy (a member id appears at most once, in one class or in `unclassified`). |
+| `id` | str | `"<project_slug>/<filename_stem>"` for the first record in a correction file (backward-compat shape); `"<project_slug>/<filename_stem>#<idx>"` for the 2nd+ record when a file holds a list of records (`idx` = the record's 0-based position in that file's raw list). Uniqueness key across the whole taxonomy (a member id appears at most once, in one class or in `unclassified`). |
 | `project` | str | Project directory slug. |
 | `date` | str `YYYY-MM-DD` | The correction's own date. |
 | `rule_snippet` | str | First ≤100 chars of the correction's rule text. |
@@ -82,7 +82,8 @@ owner-curated data — the kit ships none.
 1. Walk `$AR_ROOT/projects/*/corrections/*.json`. Skipped: files starting with `_`
    (outcome/rejected logs), non-`.json` files, records with empty `rule` text,
    records with `retracted_at` set, corrupt files (warning to stderr, scan continues).
-   A file may contain a single record or a list of records.
+   A file may contain a single record or a list of records — each record in a
+   list gets its own member id (see `members[].id` above); none are dropped.
 2. Skip any correction whose member id is already present anywhere in the taxonomy.
 3. Score the correction against every class: count how many of the class's
    `keywords` appear (case-insensitive substring) in `rule + " " + tags`.

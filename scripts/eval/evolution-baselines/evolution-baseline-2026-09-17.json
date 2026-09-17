@@ -1,0 +1,202 @@
+{
+  "schema": "evolution-baseline/v1",
+  "generated_at": "2026-09-17T00:00:00.000Z",
+  "as_of": "2026-09-17",
+  "store_root": "/Users/tongwu/.agent-recall",
+  "window": {
+    "last_4_full_iso_weeks": [
+      {
+        "iso_week": "2026-W34",
+        "start": "2026-08-17",
+        "end": "2026-08-23"
+      },
+      {
+        "iso_week": "2026-W35",
+        "start": "2026-08-24",
+        "end": "2026-08-30"
+      },
+      {
+        "iso_week": "2026-W36",
+        "start": "2026-08-31",
+        "end": "2026-09-06"
+      },
+      {
+        "iso_week": "2026-W37",
+        "start": "2026-09-07",
+        "end": "2026-09-13"
+      }
+    ],
+    "last_28_days": {
+      "start": "2026-08-21",
+      "end": "2026-09-17"
+    }
+  },
+  "metrics": {
+    "corrections_captured_per_week": [
+      {
+        "iso_week": "2026-W34",
+        "start": "2026-08-17",
+        "end": "2026-08-23",
+        "total": 1,
+        "by_provenance": {
+          "none": 1,
+          "told": 0
+        }
+      },
+      {
+        "iso_week": "2026-W35",
+        "start": "2026-08-24",
+        "end": "2026-08-30",
+        "total": 0,
+        "by_provenance": {
+          "none": 0,
+          "told": 0
+        }
+      },
+      {
+        "iso_week": "2026-W36",
+        "start": "2026-08-31",
+        "end": "2026-09-06",
+        "total": 0,
+        "by_provenance": {
+          "none": 0,
+          "told": 0
+        }
+      },
+      {
+        "iso_week": "2026-W37",
+        "start": "2026-09-07",
+        "end": "2026-09-13",
+        "total": 1,
+        "by_provenance": {
+          "none": 0,
+          "told": 1
+        }
+      }
+    ],
+    "outcome_events_per_week": [
+      {
+        "iso_week": "2026-W34",
+        "start": "2026-08-17",
+        "end": "2026-08-23",
+        "total": 86,
+        "by_kind": {
+          "retrieved": 45,
+          "triggered": 0,
+          "heeded": 0,
+          "recurred": 0,
+          "not_violated": 0,
+          "unknown": 9,
+          "not_triggered": 27,
+          "predicted": 5,
+          "predict_hit": 0,
+          "other": 0
+        }
+      },
+      {
+        "iso_week": "2026-W35",
+        "start": "2026-08-24",
+        "end": "2026-08-30",
+        "total": 140,
+        "by_kind": {
+          "retrieved": 73,
+          "triggered": 0,
+          "heeded": 1,
+          "recurred": 0,
+          "not_violated": 0,
+          "unknown": 19,
+          "not_triggered": 45,
+          "predicted": 2,
+          "predict_hit": 0,
+          "other": 0
+        }
+      },
+      {
+        "iso_week": "2026-W36",
+        "start": "2026-08-31",
+        "end": "2026-09-06",
+        "total": 90,
+        "by_kind": {
+          "retrieved": 63,
+          "triggered": 0,
+          "heeded": 3,
+          "recurred": 2,
+          "not_violated": 0,
+          "unknown": 0,
+          "not_triggered": 22,
+          "predicted": 0,
+          "predict_hit": 0,
+          "other": 0
+        }
+      },
+      {
+        "iso_week": "2026-W37",
+        "start": "2026-09-07",
+        "end": "2026-09-13",
+        "total": 103,
+        "by_kind": {
+          "retrieved": 47,
+          "triggered": 0,
+          "heeded": 3,
+          "recurred": 0,
+          "not_violated": 2,
+          "unknown": 16,
+          "not_triggered": 34,
+          "predicted": 1,
+          "predict_hit": 0,
+          "other": 0
+        }
+      }
+    ],
+    "verdict_coverage": {
+      "definition": "share of (project, correction_id) pairs with >=1 'retrieved' event in _outcomes.jsonl (any time, not window-limited) whose LATEST verdict-kind event at/after the first retrieval is NOT 'unknown'. Brief's literal spec — see file docblock for the CHALLENGE re divergence from the codebase's canonical formula.",
+      "kinds_considered_verdict": [
+        "heeded",
+        "not_triggered",
+        "not_violated",
+        "recurred",
+        "unknown"
+      ],
+      "denominator": 34,
+      "numerator": 10,
+      "coverage": 0.2941,
+      "canonical_production_comparison": {
+        "description": "packages/core/src/storage/corrections.ts computeCorrectionKPIs() / scripts/eval/rmr-report.mjs buildVerdictLedger(): presence-based (kinds include heeded|recurred|not_triggered, ANY time, not 'latest'), same event-based denominator population as above for a fair comparison. NOTE: true production also differs by using the retrieved_count FIELD on the correction record as its denominator population instead of a ledger 'retrieved' EVENT — not reproduced here since this script does not cross-reference outcome events against correction records.",
+        "kinds_considered_covering": [
+          "heeded",
+          "not_triggered",
+          "recurred"
+        ],
+        "denominator": 34,
+        "numerator": 28,
+        "coverage": 0.8235
+      }
+    },
+    "distinct_corrections_retrieved_last_28_days": 21,
+    "association_edges": 0
+  },
+  "diagnostics": {
+    "store_projects_dir_exists": true,
+    "projects_scanned": 85,
+    "projects_with_corrections_dir": 27,
+    "projects_without_corrections_dir": 58,
+    "correction_json_files_found": 108,
+    "correction_json_files_parsed_ok": 107,
+    "correction_json_files_corrupt_skipped": 0,
+    "correction_json_files_missing_date_skipped": 1,
+    "outcomes_files_found": 10,
+    "outcomes_files_missing": 17,
+    "outcomes_lines_total": 1588,
+    "outcomes_lines_parsed_ok": 1588,
+    "outcomes_lines_corrupt_skipped": 0,
+    "outcomes_lines_invalid_timestamp_skipped": 0
+  },
+  "schema_notes": {
+    "outcome_kind_universe": "Brief listed 7 kinds (retrieved/triggered/heeded/recurred/not_violated/unknown/not_triggered). The codebase's CorrectionOutcome.kind union (corrections.ts:224-225) has 9: adds 'predicted' and 'predict_hit'. The live store (verified 2026-09-17) contains both in real volume (282 predicted, 4 predict_hit of 1588 total outcome lines). This script tallies all 9 canonical kinds plus a catch-all 'other' bucket for any kind string outside that set.",
+    "verdict_coverage_interpretation": "See metrics.verdict_coverage.definition and canonical_production_comparison. Primary number follows the brief's literal 'latest post-retrieval verdict' wording; the canonical presence-based figure is reported alongside, never silently substituted.",
+    "week_window_definition": "'Last 4 full ISO weeks' = the 4 consecutive Mon-Sun ISO weeks strictly before the (possibly partial) ISO week containing --as-of. The as-of week itself is ALWAYS excluded, regardless of which weekday as-of falls on.",
+    "day_window_definition": "'Last 28 days' = the UTC-calendar-date window [as-of - 27 days, as-of], inclusive on both ends (28 distinct days total). Event day = UTC calendar date of the outcome event's `at` timestamp.",
+    "provenance_grouping": "Grouped by provenance.mode when the correction record has a `provenance` object with a non-empty string `mode`; 'none' when the `provenance` field is absent entirely; 'unspecified' when present but malformed (not an object, or object without a usable `mode` string). Only 8/108 correction records in the live store carry a provenance field as of this baseline (all mode='told').",
+    "association_edges": "Explicit constant 0 — the association-edge ledger does not exist yet in this store version. Not a computed value; recorded as a documented floor for later phases to compare against."
+  }
+}

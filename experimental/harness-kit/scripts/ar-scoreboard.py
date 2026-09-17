@@ -451,9 +451,18 @@ def format_digest(snapshot: dict) -> str:
                     for cls in classes
                 )
                 n_unclassified = len(tax_data.get("unclassified", []))
+                # A class with no rule_date can never produce a phantom — is_phantom()
+                # safely returns False for it, but that "safe default" is otherwise
+                # invisible (reads identically to "checked, found clean"). Surface it
+                # as its own count so the blind spot never hides inside n_phantom==0.
+                n_unmeasurable = sum(
+                    1 for cls in classes
+                    if not (cls.get("rule_date") or "").strip()
+                )
                 lines.append(
                     f" reflect  {n_classes} classes · {n_phantom} phantom · "
-                    f"{n_provisional} provisional · {n_unclassified} unclassified · {due_str}"
+                    f"{n_provisional} provisional · {n_unclassified} unclassified · "
+                    f"{n_unmeasurable} unmeasurable (no rule_date) · {due_str}"
                 )
             except Exception as e:
                 lines.append(f" reflect  n/a (taxonomy parse error: {str(e)[:30]})")

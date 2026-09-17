@@ -492,8 +492,14 @@ function verifyAllBaselines() {
   for (const f of fs.readdirSync(BASELINES_DIR)) {
     if (!f.endsWith(".json")) continue;
     try {
-      verifyBaseline(path.join(BASELINES_DIR, f));
-      process.stdout.write(`  verifyBaseline: OK ${f}\n`);
+      const r = verifyBaseline(path.join(BASELINES_DIR, f));
+      // Evolution P0 W1: a parse-only pass (rmr-baseline/v1|v2 — nothing
+      // independently recomputed) must never render as the same "OK" a
+      // genuine corpus_hash + headline-metric recomputation gets.
+      const label = r.mode === "parse-only"
+        ? "verifyBaseline: PARSE-ONLY (schema has no recomputable metrics)"
+        : "verifyBaseline: OK";
+      process.stdout.write(`  ${label} ${f}\n`);
     } catch (e) {
       process.stderr.write(`  verifyBaseline: FAIL ${f}: ${e.message}\n`);
       failed++;
@@ -599,8 +605,11 @@ async function main() {
       process.stdout.write(`  wrote baseline: ${FIXTURE_BASELINE}\n`);
 
       // Immediately verify our own artifact (adjudicate-by-artifact, §7.2).
-      verifyBaseline(FIXTURE_BASELINE);
-      process.stdout.write(`  verifyBaseline: OK (fresh fixture baseline)\n`);
+      const freshVerify = verifyBaseline(FIXTURE_BASELINE);
+      const freshLabel = freshVerify.mode === "parse-only"
+        ? "verifyBaseline: PARSE-ONLY (schema has no recomputable metrics) (fresh fixture baseline)"
+        : "verifyBaseline: OK (fresh fixture baseline)";
+      process.stdout.write(`  ${freshLabel}\n`);
 
       const gates = loadGates();
       const gateReports = evaluateGates(result, gates);

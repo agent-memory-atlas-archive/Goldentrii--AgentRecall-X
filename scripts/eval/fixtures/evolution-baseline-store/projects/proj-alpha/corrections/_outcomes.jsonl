@@ -1,0 +1,17 @@
+{"correction_id":"c1","project":"proj-alpha","kind":"retrieved","at":"2026-08-19T10:00:00.000Z"}
+{"correction_id":"c1","project":"proj-alpha","kind":"heeded","at":"2026-08-19T12:00:00.000Z"}
+{"correction_id":"c2","project":"proj-alpha","kind":"retrieved","at":"2026-08-27T10:00:00.000Z"}
+{"correction_id":"c2","project":"proj-alpha","kind":"unknown","at":"2026-08-28T10:00:00.000Z"}
+{"correction_id":"c3","project":"proj-alpha","kind":"retrieved","at":"2026-09-11T09:00:00.000Z"}
+{"correction_id":"c3","project":"proj-alpha","kind":"heeded","at":"2026-09-11T09:30:00.000Z"}
+{"correction_id":"c3","project":"proj-alpha","kind":"unknown","at":"2026-09-11T10:00:00.000Z"}
+{"correction_id":"c4","project":"proj-alpha","kind":"retrieved","at":"2026-09-16T08:00:00.000Z"}
+{"correction_id":"c4","project":"proj-alpha","kind":"heeded","at":"2026-09-16T09:00:00.000Z"}
+{"correction_id":"c-kinds-test","project":"proj-alpha","kind":"triggered","at":"2026-09-01T01:00:00.000Z"}
+{"correction_id":"c-kinds-test","project":"proj-alpha","kind":"predicted","at":"2026-09-01T02:00:00.000Z"}
+{"correction_id":"c-kinds-test","project":"proj-alpha","kind":"predict_hit","at":"2026-09-01T03:00:00.000Z"}
+{"correction_id":"c-kinds-test","project":"proj-alpha","kind":"not_violated","at":"2026-09-01T04:00:00.000Z"}
+{"correction_id":"c-kinds-test","project":"proj-alpha","kind":"not_triggered","at":"2026-09-01T05:00:00.000Z"}
+{"correction_id":"c-kinds-test","project":"proj-alpha","kind":"unknown","at":"2026-09-01T06:00:00.000Z"}
+{"correction_id":"c-kinds-test","project":"proj-alpha","kind":"bogus_future_kind","at":"2026-09-02T00:00:00.000Z"}
+{ this is not valid json — corrupt line, must be skipped and counted, never crash

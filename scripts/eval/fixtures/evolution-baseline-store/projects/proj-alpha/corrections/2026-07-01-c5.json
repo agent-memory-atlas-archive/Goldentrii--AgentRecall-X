@@ -1,0 +1,7 @@
+{
+  "id": "c5",
+  "date": "2026-07-01",
+  "project": "proj-alpha",
+  "rule": "fixture correction c5 — older than the 4-week window AND never retrieved (zero outcome events), must be EXCLUDED from metric (a) window and from metric (c) denominator",
+  "kind": "correction"
+}

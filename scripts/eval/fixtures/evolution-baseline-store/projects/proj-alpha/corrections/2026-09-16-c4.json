@@ -1,0 +1,7 @@
+{
+  "id": "c4",
+  "date": "2026-09-16",
+  "project": "proj-alpha",
+  "rule": "fixture correction c4 — inside current (partial) ISO week, must be EXCLUDED from the last-4-full-ISO-weeks capture metric",
+  "kind": "correction"
+}

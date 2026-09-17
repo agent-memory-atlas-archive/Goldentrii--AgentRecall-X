@@ -389,7 +389,11 @@ export function writeBaseline(result, opts = {}) {
  *   - metric mismatch → throws listing which field drifted
  *
  * @param {string} file — absolute path to a bench-result/v1 JSON file
- * @returns {{ok: true, benchmark: string}} on success
+ * @returns {{ok: true, benchmark: string, mode: "recomputed"|"parse-only"}} on success.
+ *   mode="parse-only" means NOTHING was independently recomputed (rmr-baseline/v1|v2
+ *   have no per_item to recompute metrics from) — callers MUST render this
+ *   distinctly from mode="recomputed" (which reflects an actual corpus_hash +
+ *   headline-metric recomputation), never as an indistinguishable "OK".
  * @throws {Error} on any mismatch or IO failure
  */
 export function verifyBaseline(file) {
@@ -422,8 +426,11 @@ export function verifyBaseline(file) {
   // v2 (C3, 2026-07-03) adds c3_* verdict-coverage fields; parse-check only,
   // same as v1 (no per_item to recompute from).
   if (schema === "rmr-baseline/v1" || schema === "rmr-baseline/v2") {
-    // Nothing to recompute for these schemas; just confirm they parse
-    return { ok: true, benchmark: "rmr-report" };
+    // Nothing to recompute for these schemas; just confirm they parse.
+    // mode="parse-only" so callers never render this the same as a genuine
+    // corpus_hash + headline-metric recomputation (evolution P0 W1 fix —
+    // this was previously indistinguishable from mode="recomputed" below).
+    return { ok: true, benchmark: "rmr-report", mode: "parse-only" };
   }
 
   // ── (a) corpus_hash recompute from manifest ────────────────────────────
@@ -518,7 +525,7 @@ export function verifyBaseline(file) {
     );
   }
 
-  return { ok: true, benchmark: result.benchmark ?? "unknown" };
+  return { ok: true, benchmark: result.benchmark ?? "unknown", mode: "recomputed" };
 }
 
 function _get(obj, dotPath) {
@@ -654,7 +661,11 @@ if (invokedDirectly) {
     }
     try {
       const r = verifyBaseline(file);
-      process.stdout.write(`OK: ${r.benchmark} baseline verified\n`);
+      if (r.mode === "parse-only") {
+        process.stdout.write(`PARSE-ONLY: ${r.benchmark} baseline parsed (schema has no recomputable metrics)\n`);
+      } else {
+        process.stdout.write(`OK: ${r.benchmark} baseline verified\n`);
+      }
     } catch (e) {
       process.stderr.write(`FAIL: ${e.message}\n`);
       process.exit(1);

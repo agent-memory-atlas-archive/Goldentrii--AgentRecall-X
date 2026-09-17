@@ -1,0 +1,8 @@
+{
+  "id": "c2",
+  "date": "2026-08-26",
+  "project": "proj-alpha",
+  "rule": "fixture correction c2 — provenance mode told",
+  "kind": "correction",
+  "provenance": { "source": "2026-08-26", "mode": "told" }
+}

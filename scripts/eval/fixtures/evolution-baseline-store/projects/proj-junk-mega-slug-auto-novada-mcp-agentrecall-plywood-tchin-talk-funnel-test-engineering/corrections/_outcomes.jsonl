@@ -1,0 +1,3 @@
+{"correction_id":"good","project":"proj-junk-mega-slug-auto-novada-mcp-agentrecall-plywood-tchin-talk-funnel-test-engineering","kind":"retrieved","at":"2026-08-25T10:00:00.000Z"}
+{"correction_id":"good","project":"proj-junk-mega-slug-auto-novada-mcp-agentrecall-plywood-tchin-talk-funnel-test-engineering","kind":"heeded","at":"2026-08-25T11:00:00.000Z"}
+not json at all, another corrupt line to prove per-line resilience
