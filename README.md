@@ -12,6 +12,7 @@
   <a href="https://www.npmjs.com/package/agent-recall-sdk"><img src="https://img.shields.io/npm/v/agent-recall-sdk?style=flat-square&label=SDK&color=0EA5E9" alt="SDK npm"></a>
   <a href="https://www.npmjs.com/package/agent-recall-cli"><img src="https://img.shields.io/npm/v/agent-recall-cli?style=flat-square&label=CLI&color=10B981" alt="CLI npm"></a>
   <a href="https://github.com/Goldentrii/AgentRecall-X/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-brightgreen?style=flat-square" alt="License"></a>
+  <a href="https://mcpvault.io/servers/agentrecall-x/health?utm_source=external_badge&amp;utm_medium=referral&amp;utm_campaign=mcp_health_report"><img src="https://mcpvault.io/badge/agentrecall-x.svg" alt="MCPVault: claimed"></a>
   <img src="https://img.shields.io/badge/tools-5_default-orange?style=flat-square" alt="Tools">
   <img src="https://img.shields.io/badge/memory_layers-5-7C3AED?style=flat-square" alt="5 layers">
   <img src="https://img.shields.io/badge/cloud-zero_by_default-blue?style=flat-square" alt="Zero cloud by default">
